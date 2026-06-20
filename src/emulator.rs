@@ -255,91 +255,20 @@ impl Emulator {
                 self.vblank_occurred = false;
                 
                 // If this was a VBlankIntrWait, process the VBlank interrupt
-                // by calling the user's IRQ handler
+                // by raising a proper IRQ exception
                 if self.cpu.vblank_intr_wait {
                     self.cpu.vblank_intr_wait = false;
-                    #[cfg(feature = "std")]
-                    eprintln!("process_vblank_irq called");
-                    self.process_vblank_irq();
+                    // Set VBlank IF bit
+                    let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
+                    self.mem.io[0x202] = ((if_val | 1) & 0xFF) as u8;
+                    self.mem.io[0x203] = (((if_val | 1) >> 8) & 0xFF) as u8;
+                    // Raise IRQ exception - this will call the BIOS IRQ handler
+                    // which dispatches to the user's VBlank handler
+                    self.cpu.raise_irq();
                 }
             }
         }
         
-    }
-
-    /// Process a VBlank interrupt by calling the user's IRQ handler.
-    /// The handler address is stored at [0x03007FFC] in IWRAM.
-    fn process_vblank_irq(&mut self) {
-        // Set VBlank IF bit
-        let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
-        let new_if = if_val | 1; // Set VBlank bit
-        self.mem.io[0x202] = (new_if & 0xFF) as u8;
-        self.mem.io[0x203] = ((new_if >> 8) & 0xFF) as u8;
-        
-        // Read the IRQ handler address from IWRAM 0x03007FFC
-        let handler_addr = self.mem.read_word(0x0300_7FFC);
-        
-        // The BIOS IRQ handler at 0x0128 reads the interrupt vector table
-        // at IWRAM 0x03000000 and dispatches to the appropriate handler.
-        // For VBlank (IRQ 0), the handler pointer is at 0x03000004.
-        // But the BIOS handler is at 0x0128 in our stub which is incomplete.
-        // Instead, we directly call the VBlank handler from the vector table.
-        
-        // Read the VBlank handler address from the IWRAM vector table
-        // The vector table starts at 0x03000000 with 4 bytes per entry
-        // Entry 0 = VBlank, Entry 1 = HBlank, etc.
-        let vb_handler = self.mem.read_word(0x0300_0004);
-        
-        if vb_handler >= 0x0200_0000 && vb_handler < 0x0A00_0000 {
-            // Valid handler address - call it
-            // Save state
-            let saved_lr = self.cpu.r[14];
-            let saved_pc = self.cpu.r[15];
-            let saved_cpsr = self.cpu.cpsr;
-            
-            // Set up for handler call (like BLX)
-            // The handler address has bit 0 set for THUMB
-            self.cpu.r[14] = saved_pc | (if self.cpu.is_thumb() { 1 } else { 0 });
-            
-            if vb_handler & 1 != 0 {
-                self.cpu.cpsr |= FLAG_T;
-                self.cpu.r[15] = vb_handler & !1;
-            } else {
-                self.cpu.cpsr &= !FLAG_T;
-                self.cpu.r[15] = vb_handler & !3;
-            }
-            
-            // Execute handler until it returns (BX LR back to saved PC)
-            for _ in 0..50000 {
-                if self.cpu.halted { break; }
-                self.execute_one();
-                
-                // Check if handler returned
-                let pc = self.cpu.r[15];
-                if pc == saved_pc || 
-                   (pc >= saved_pc.wrapping_sub(4) && pc <= saved_pc.wrapping_add(4)) {
-                    break;
-                }
-                // Also break if LR was used to return
-                if self.cpu.r[14] != saved_pc && self.cpu.r[14] != (saved_pc | 1) {
-                    // LR changed - might have returned
-                    if pc >= 0x0800_0000 && (pc < 0x0800_9000) {
-                        // Back in ROM code - likely returned
-                        break;
-                    }
-                }
-            }
-            
-            // Restore state
-            self.cpu.r[14] = saved_lr;
-            self.cpu.r[15] = saved_pc;
-            self.cpu.cpsr = saved_cpsr;
-        }
-        
-        // Clear VBlank IF bit (handler typically does this, but ensure it's cleared)
-        let if_val2 = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
-        self.mem.io[0x202] = (if_val2 & !1 & 0xFF) as u8;
-        self.mem.io[0x203] = ((if_val2 & !1) >> 8) as u8;
     }
 
     pub fn execute_one(&mut self) {
