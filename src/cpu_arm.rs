@@ -18,12 +18,24 @@ impl Cpu {
 
         match op {
             0x0 => {
-                // Data processing - immediate shift (or misc)
-                if (instr & 0x0190_F000) == 0x0100_F000 {
-                    // BX / SWP / etc (misc)
+                // Bits 27-25 = 000: multiple instruction types
+                let bits27_20 = (instr >> 20) & 0xFF;
+                
+                // Check for PSR transfer (MRS/MSR): bits 27-20 = 0001 0rS0
+                // MRS: 0001 0r00 (S=0), MSR: 0001 0r10 (S=1, bit21=1)
+                // Pattern: (bits27_20 & 0x0FB) == 0x010 (MRS) or 0x012 (MSR)
+                if (bits27_20 & 0x0FB) == 0x010 || (bits27_20 & 0x0FB) == 0x012 {
+                    // PSR transfer (MRS or MSR)
+                    self.exec_arm_psr_transfer(mem, instr);
+                } else if (instr & 0x0190_F000) == 0x0100_F000 {
+                    // BX / SWP / etc (misc) — bit 24=1 and bits 7-4=1111
                     self.exec_arm_misc(mem, instr);
+                } else if (instr & 0x0000_00F0) == 0x0000_0090 {
+                    // Multiply / swap (bit 7=1, bit 4=1)
+                    self.exec_arm_multiply(mem, instr);
                 } else if (instr & 0x0120_0000) == 0x0020_0000 {
-                    // Immediate operand
+                    // Immediate operand (bit 25=1... but op=0 means bit 25=0)
+                    // This shouldn't happen, but handle it
                     self.exec_arm_data_processing(mem, instr, true);
                 } else {
                     // Register operand with shift
@@ -839,6 +851,88 @@ impl Cpu {
         let target = pc.wrapping_add(offset as u32);
         self.r[15] = target;
         self.cycles += 3;
+    }
+
+    fn exec_arm_multiply(&mut self, _mem: &mut Memory, instr: u32) {
+        // Multiply instructions: MUL, MLA, UMULL, UMLAL, SMULL, SMLAL
+        // SWP, SWPB
+        let bit24 = (instr >> 24) & 1;
+        let bit23 = (instr >> 23) & 1;
+        let bit22 = (instr >> 22) & 1; // SWP: B bit
+        let bit21 = (instr >> 21) & 1; // Accumulate
+        let bit20 = (instr >> 20) & 1; // Set flags
+
+        if bit24 == 0 && bit23 == 0 {
+            // MUL or MLA
+            let rd = ((instr >> 16) & 0xF) as usize;
+            let rs = ((instr >> 8) & 0xF) as usize;
+            let rm = (instr & 0xF) as usize;
+
+            let result = self.r[rm].wrapping_mul(self.r[rs]);
+            if bit21 != 0 {
+                // MLA: Rd = Rm * Rs + Rn
+                let rn = ((instr >> 12) & 0xF) as usize;
+                self.r[rd] = result.wrapping_add(self.r[rn]);
+            } else {
+                // MUL: Rd = Rm * Rs
+                self.r[rd] = result;
+            }
+
+            if bit20 != 0 {
+                self.set_nz(self.r[rd]);
+                // C is unpredictable on ARMv4
+            }
+            self.r[15] = self.r[15].wrapping_add(4);
+            self.cycles += 2;
+        } else {
+            // UMULL, UMLAL, SMULL, SMLAL (64-bit multiply)
+            let rd_hi = ((instr >> 16) & 0xF) as usize;
+            let rd_lo = ((instr >> 12) & 0xF) as usize;
+            let rs = ((instr >> 8) & 0xF) as usize;
+            let rm = (instr & 0xF) as usize;
+
+            if bit23 != 0 {
+                // Signed multiply
+                let a = self.r[rm] as i32 as i64;
+                let b = self.r[rs] as i32 as i64;
+                let result = a.wrapping_mul(b);
+
+                if bit21 != 0 {
+                    // SMLAL: RdHiRdLo = Rm * Rs + RdHiRdLo
+                    let acc = ((self.r[rd_hi] as u64) << 32) | (self.r[rd_lo] as u64);
+                    let final_result = result.wrapping_add(acc as i64);
+                    self.r[rd_hi] = (final_result >> 32) as u32;
+                    self.r[rd_lo] = final_result as u32;
+                } else {
+                    // SMULL: RdHiRdLo = Rm * Rs
+                    self.r[rd_hi] = (result >> 32) as u32;
+                    self.r[rd_lo] = result as u32;
+                }
+            } else {
+                // Unsigned multiply
+                let a = self.r[rm] as u64;
+                let b = self.r[rs] as u64;
+                let result = a.wrapping_mul(b);
+
+                if bit21 != 0 {
+                    // UMLAL: RdHiRdLo = Rm * Rs + RdHiRdLo
+                    let acc = ((self.r[rd_hi] as u64) << 32) | (self.r[rd_lo] as u64);
+                    let final_result = result.wrapping_add(acc);
+                    self.r[rd_hi] = (final_result >> 32) as u32;
+                    self.r[rd_lo] = final_result as u32;
+                } else {
+                    // UMULL: RdHiRdLo = Rm * Rs
+                    self.r[rd_hi] = (result >> 32) as u32;
+                    self.r[rd_lo] = result as u32;
+                }
+            }
+
+            if bit20 != 0 {
+                self.set_nz(self.r[rd_hi]);
+            }
+            self.r[15] = self.r[15].wrapping_add(4);
+            self.cycles += 3;
+        }
     }
 
     fn exec_arm_swi(&mut self, _mem: &mut Memory, _instr: u32) {

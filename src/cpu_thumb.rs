@@ -56,7 +56,7 @@ impl Cpu {
                 // THUMB.10: Load/store halfword with immediate offset
                 self.exec_thumb_halfword_imm_offset(instr, mem);
             }
-            0x22..=0x23 | 0x26..=0x27 | 0x2A..=0x2B | 0x32..=0x33 | 0x3A..=0x3B => {
+            0x22..=0x23 | 0x26..=0x27 | 0x2A..=0x2B | 0x3A..=0x3B => {
                 // Undefined/reserved
                 self.r[15] = self.r[15].wrapping_add(2);
                 self.cycles += 1;
@@ -167,19 +167,19 @@ impl Cpu {
     }
 
     fn exec_thumb_add_sub(&mut self, instr: u16) {
-        let op = (instr >> 9) & 0x3;
         let is_imm = (instr >> 10) & 1 != 0;
+        let op = (instr >> 8) & 0x3;
         let rs = ((instr >> 3) & 0x7) as usize;
         let rd = (instr & 0x7) as usize;
 
-        let operand_idx = ((instr >> 6) & 0x7) as usize;
+        let operand = if is_imm {
+            ((instr >> 6) & 0x7) as u32
+        } else {
+            self.r[((instr >> 6) & 0x7) as usize]
+        };
 
         let a = self.r[rs];
-        let b = if is_imm {
-            operand_idx as u32
-        } else {
-            self.r[operand_idx]
-        };
+        let b = operand;
 
         let (result, carry, overflow) = match op {
             0 => { // ADD
