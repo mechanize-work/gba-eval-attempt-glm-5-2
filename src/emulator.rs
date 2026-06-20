@@ -246,39 +246,6 @@ impl Emulator {
     }
 
     pub fn run_frame(&mut self) {
-        // Simulate BIOS execution time (~768000 cycles).
-        // Run ROM for extra cycles on first frame, then reset display state
-        // to force blank. This matches the oracle's behavior where BIOS
-        // keeps force blank ON during its execution.
-        if self.frame_count == 0 {
-            let bios_target = self.cycle_count.wrapping_add(768000);
-            while self.cycle_count < bios_target {
-                self.check_and_handle_interrupts();
-                if self.cpu.halted {
-                    let remaining = bios_target.wrapping_sub(self.cycle_count);
-                    if self.cpu.vblank_intr_wait {
-                        let cycles_to_vblank = if self.current_scanline < VISIBLE_LINES as u16 {
-                            (VISIBLE_LINES as u32 - self.current_scanline as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
-                        } else {
-                            (TOTAL_LINES as u32 - self.current_scanline as u32 + VISIBLE_LINES as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
-                        };
-                        let advance = cycles_to_vblank.min(remaining).max(1);
-                        self.cycle_count = self.cycle_count.wrapping_add(advance);
-                        self.advance_hardware(advance);
-                    } else {
-                        let advance = remaining.min(CYCLES_PER_SCANLINE).max(1);
-                        self.cycle_count = self.cycle_count.wrapping_add(advance);
-                        self.advance_hardware(advance);
-                    }
-                } else {
-                    self.execute_one();
-                }
-            }
-            // Reset display to force blank (BIOS state)
-            self.mem.io[0x00] = 0x80;
-            self.mem.io[0x01] = 0x00;
-        }
-
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
         let mut halt_count: u64 = 0;
