@@ -324,6 +324,8 @@ impl Memory {
                 }
             }
             0x05 => { // Palette
+                #[cfg(feature = "std")]
+                if !self.palette_written { eprintln!("PALETTE WRITE: {:08X}={:02X}", addr, val); self.palette_written = true; }
                 let a = (addr as usize) & (PALETTE_SIZE - 1);
                 self.palette[a] = val;
             }
