@@ -264,17 +264,6 @@ impl Emulator {
 
         // Debug
         let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-        #[cfg(feature = "std")]
-        if self.frame_count >= 4 && self.frame_count <= 8 {
-            let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
-            // Dump DMA3 registers
-            let dma3_sad = (self.mem.io[0xD4] as u32) | ((self.mem.io[0xD5] as u32) << 8) | ((self.mem.io[0xD6] as u32) << 16) | ((self.mem.io[0xD7] as u32) << 24);
-            let dma3_dad = (self.mem.io[0xD8] as u32) | ((self.mem.io[0xD9] as u32) << 8) | ((self.mem.io[0xDA] as u32) << 16) | ((self.mem.io[0xDB] as u32) << 24);
-            let dma3_cnt = (self.mem.io[0xDC] as u16) | ((self.mem.io[0xDD] as u16) << 8);
-            let dma3_cnt_h = (self.mem.io[0xDE] as u16) | ((self.mem.io[0xDF] as u16) << 8);
-            eprintln!("Frame {}: dispcnt={:04X} pal={} dma3: sad={:08X} dad={:08X} cnt={:04X}{:04X}",
-                self.frame_count, dispcnt, pal_nonzero, dma3_sad, dma3_dad, dma3_cnt_h, dma3_cnt);
-        }
 
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
