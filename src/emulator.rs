@@ -255,13 +255,6 @@ impl Emulator {
 
         // Debug
         let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-        #[cfg(feature = "std")]
-        if self.frame_count < 10 {
-            let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
-            let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
-            eprintln!("Frame {}: dispcnt={:04X} instrs={} pc={:08X} halted={} pal={} vram={}",
-                self.frame_count, dispcnt, instr_count, self.cpu.r[15], self.cpu.halted, pal_nonzero, vram_nonzero);
-        }
 
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
@@ -374,13 +367,6 @@ impl Emulator {
 
         // Read instruction at PC
         let pc = self.cpu.r[15];
-
-        // Check if IRQ handler is reached
-        #[cfg(feature = "std")]
-        if pc >= 0x03000000 && pc < 0x03008000 && self.frame_count >= 4 && self.frame_count <= 6 && !self.bad_pc_warned2 {
-            eprintln!("IWRAM exec: pc={:08X} cpsr={:08X} frame={}", pc, self.cpu.cpsr, self.frame_count);
-            self.bad_pc_warned2 = true;
-        }
 
         // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
         // This happens because our BIOS stub doesn't implement all functions
