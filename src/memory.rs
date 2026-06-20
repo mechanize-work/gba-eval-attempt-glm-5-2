@@ -457,6 +457,11 @@ impl Memory {
         if a == 0x130 || a == 0x131 {
             return;
         }
+        // IF is write-to-clear (byte access)
+        if a == 0x202 || a == 0x203 {
+            self.io[a] &= !val;
+            return;
+        }
         self.io[a] = val;
     }
 
