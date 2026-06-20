@@ -455,6 +455,14 @@ impl Emulator {
         }
         self.timer.run(cycles, &mut self.irq);
 
+        // Update APU - sync registers from IO memory
+        for i in 0..0x18 {
+            let reg_val = self.mem.apu_regs[i];
+            let reg_addr = 0x04000000u32 + 0x60u32 + (i as u32) * 2;
+            self.apu.write_reg(reg_addr, reg_val);
+        }
+        self.apu.generate_frame(cycles);
+
         // Sync interrupt flags to IO memory
         self.sync_interrupts();
 
