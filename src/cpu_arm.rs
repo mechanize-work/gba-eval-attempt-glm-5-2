@@ -295,7 +295,9 @@ impl Cpu {
             _ => {}
         }
         self.r[15] = self.r[15].wrapping_add(4);
-        self.cycles += 1;
+        // ARMv5TE multiply extra: trigger undefined exception on ARM7TDMI,
+        // handled by BIOS in software. Add exception overhead.
+        self.cycles += 10;
     }
 
     fn exec_arm_psr_transfer(&mut self, _mem: &mut Memory, instr: u32) {
