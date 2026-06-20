@@ -1181,7 +1181,10 @@ impl Cpu {
             }
             0x05 => {
                 // VBlankIntrWait - wait for VBlank
-                // R0: 0=non-strict (check if VBlank already happened), 1=strict (wait for NEXT)
+                // The BIOS sets IME=1 before waiting (verified from BIOS stub)
+                mem.write_byte(0x0400_0208, 1); // IME = 1
+                mem.io[0x208] = 1;
+                
                 let strict = self.r[0] != 0;
                 if strict {
                     // Clear VBlank IF, then wait for next VBlank
