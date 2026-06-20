@@ -430,12 +430,13 @@ impl Emulator {
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
             self.cpu.execute_thumb(&mut self.mem, instr);
-            // Add instruction fetch cycles from ROM
-            self.cpu.cycles += Cpu::mem_wait_cfg(pc, self.mem.waitcnt, true);
+            // THUMB: 16-bit instructions share 32-bit fetches (prefetch buffer)
+            // Add half the ROM fetch overhead (approximation)
+            self.cpu.cycles += (Cpu::mem_wait_cfg(pc, self.mem.waitcnt, true) + 1) / 2;
         } else {
             let instr = self.mem.read_word(pc);
             self.cpu.execute_arm(&mut self.mem, instr);
-            // Add instruction fetch cycles from ROM
+            // ARM: 32-bit instructions need full fetch
             self.cpu.cycles += Cpu::mem_wait_cfg(pc, self.mem.waitcnt, true);
         }
 
