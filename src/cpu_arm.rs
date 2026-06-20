@@ -30,8 +30,8 @@ impl Cpu {
         match op {
             0x0 => {
                 // Bits 27-25 = 000: multiple instruction types
-                let bits27_20 = (instr >> 20) & 0xFF;
-                let bit24 = (instr >> 24) & 1;
+                let _bits27_20 = (instr >> 20) & 0xFF;
+                let _bit24 = (instr >> 24) & 1;
                 
                 // Check for PSR transfer (MRS/MSR)
                 // MRS: cond 0001 0r00 1111 rd 00000000 0000
@@ -362,7 +362,7 @@ impl Cpu {
         self.cycles += 1;
     }
 
-    fn exec_arm_data_processing(&mut self, mem: &mut Memory, instr: u32, immediate: bool) {
+    fn exec_arm_data_processing(&mut self, _mem: &mut Memory, instr: u32, immediate: bool) {
         let opcode = (instr >> 21) & 0xF;
         let s = (instr >> 20) & 1 != 0;
         let rn = ((instr >> 16) & 0xF) as usize;
@@ -990,7 +990,7 @@ impl Cpu {
     }
 
     fn exec_arm_multiply(&mut self, mem: &mut Memory, instr: u32) {
-        let bit24 = (instr >> 24) & 1;
+        let _bit24 = (instr >> 24) & 1;
         let bit23 = (instr >> 23) & 1;
         let bit22 = (instr >> 22) & 1;
         let bit21 = (instr >> 21) & 1;
