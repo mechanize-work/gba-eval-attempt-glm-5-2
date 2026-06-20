@@ -212,10 +212,8 @@ impl Emulator {
         let mut instr_count: u64 = 0;
 
         while self.cycle_count < target_cycles && instr_count < 2_000_000 {
-            // Check for interrupts (between instructions, like real hardware)
             self.check_and_handle_interrupts();
 
-            // Execute one instruction (or advance if halted)
             if self.cpu.halted {
                 self.cycle_count = self.cycle_count.wrapping_add(1);
                 self.advance_hardware(1);
@@ -223,14 +221,13 @@ impl Emulator {
             } else {
                 self.execute_one();
                 instr_count += 1;
-                // Check for interrupts AFTER instruction (between instructions)
                 self.check_and_handle_interrupts();
             }
         }
 
         self.cycle_count = self.cycle_count.wrapping_sub(CYCLES_PER_FRAME);
 
-        // Render the frame
+        // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
     }
 
@@ -309,6 +306,30 @@ impl Emulator {
             // we limit IRQ processing
         }
         
+    }
+
+    fn snapshot_display_regs(&mut self) {
+        let p = &mut self.ppu;
+        let m = &self.mem;
+        p.snap_dispcnt = (m.io[0x00] as u16) | ((m.io[0x01] as u16) << 8);
+        p.snap_bgcnt[0] = (m.io[0x08] as u16) | ((m.io[0x09] as u16) << 8);
+        p.snap_bgcnt[1] = (m.io[0x0A] as u16) | ((m.io[0x0B] as u16) << 8);
+        p.snap_bgcnt[2] = (m.io[0x0C] as u16) | ((m.io[0x0D] as u16) << 8);
+        p.snap_bgcnt[3] = (m.io[0x0E] as u16) | ((m.io[0x0F] as u16) << 8);
+        for i in 0..4 {
+            p.snap_bg_hofs[i] = (m.io[0x10 + i*4] as u16) | ((m.io[0x11 + i*4] as u16) << 8);
+            p.snap_bg_vofs[i] = (m.io[0x12 + i*4] as u16) | ((m.io[0x13 + i*4] as u16) << 8);
+        }
+        p.snap_bldcnt = (m.io[0x50] as u16) | ((m.io[0x51] as u16) << 8);
+        p.snap_bldalpha = (m.io[0x52] as u16) | ((m.io[0x53] as u16) << 8);
+        p.snap_bldy = (m.io[0x54] as u16) | ((m.io[0x55] as u16) << 8);
+        p.snap_mosaic = (m.io[0x4C] as u16) | ((m.io[0x4D] as u16) << 8);
+        p.snap_win0h = (m.io[0x40] as u16) | ((m.io[0x41] as u16) << 8);
+        p.snap_win1h = (m.io[0x42] as u16) | ((m.io[0x43] as u16) << 8);
+        p.snap_win0v = (m.io[0x44] as u16) | ((m.io[0x45] as u16) << 8);
+        p.snap_win1v = (m.io[0x46] as u16) | ((m.io[0x47] as u16) << 8);
+        p.snap_winin = (m.io[0x48] as u16) | ((m.io[0x49] as u16) << 8);
+        p.snap_winout = (m.io[0x4A] as u16) | ((m.io[0x4B] as u16) << 8);
     }
 
     pub fn execute_one(&mut self) {
@@ -397,7 +418,6 @@ impl Emulator {
                 dispstat |= 0x2; // Set VBlank bit
                 self.vblank_occurred = true;
                 // Only signal VBlank IRQ if not in VBlankIntrWait
-                // (VBlankIntrWait handles VBlank specially)
                 if !self.cpu.vblank_intr_wait {
                     self.irq.signal(IRQ_VBLANK);
                 }

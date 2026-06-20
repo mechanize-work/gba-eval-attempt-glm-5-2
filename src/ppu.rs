@@ -67,11 +67,25 @@ pub struct Ppu {
     pub current_line: u16,
     pub cycle: u32,
     pub frame_complete: bool,
-    // Affine transformation registers (internal reference point)
     pub bg2x: i32,
     pub bg2y: i32,
     pub bg3x: i32,
     pub bg3y: i32,
+    // Snapshot of display registers at VBlank start for rendering
+    pub snap_dispcnt: u16,
+    pub snap_bgcnt: [u16; 4],
+    pub snap_bg_hofs: [u16; 4],
+    pub snap_bg_vofs: [u16; 4],
+    pub snap_bldcnt: u16,
+    pub snap_bldalpha: u16,
+    pub snap_bldy: u16,
+    pub snap_mosaic: u16,
+    pub snap_win0h: u16,
+    pub snap_win1h: u16,
+    pub snap_win0v: u16,
+    pub snap_win1v: u16,
+    pub snap_winin: u16,
+    pub snap_winout: u16,
 }
 
 impl Ppu {
@@ -85,6 +99,20 @@ impl Ppu {
             bg2y: 0,
             bg3x: 0,
             bg3y: 0,
+            snap_dispcnt: 0,
+            snap_bgcnt: [0; 4],
+            snap_bg_hofs: [0; 4],
+            snap_bg_vofs: [0; 4],
+            snap_bldcnt: 0,
+            snap_bldalpha: 0,
+            snap_bldy: 0,
+            snap_mosaic: 0,
+            snap_win0h: 0,
+            snap_win1h: 0,
+            snap_win0v: 0,
+            snap_win1v: 0,
+            snap_winin: 0,
+            snap_winout: 0,
         }
     }
 
@@ -97,6 +125,20 @@ impl Ppu {
         self.bg2y = 0;
         self.bg3x = 0;
         self.bg3y = 0;
+        self.snap_dispcnt = 0;
+        self.snap_bgcnt = [0; 4];
+        self.snap_bg_hofs = [0; 4];
+        self.snap_bg_vofs = [0; 4];
+        self.snap_bldcnt = 0;
+        self.snap_bldalpha = 0;
+        self.snap_bldy = 0;
+        self.snap_mosaic = 0;
+        self.snap_win0h = 0;
+        self.snap_win1h = 0;
+        self.snap_win0v = 0;
+        self.snap_win1v = 0;
+        self.snap_winin = 0;
+        self.snap_winout = 0;
     }
 
     #[inline]
@@ -106,14 +148,13 @@ impl Ppu {
 
     // Render a complete frame
     pub fn render_frame(&mut self, mem: &Memory) {
-        // Read DISPCNT
-        let dispcnt = self.io_read_half(mem, DISPCNT);
+        // Use snapshotted display registers (captured at VBlank start)
+        let dispcnt = self.snap_dispcnt;
         let mode = dispcnt & 0x7;
         let bg_en = (dispcnt >> 8) & 0xF;
         let obj_en = (dispcnt >> 12) & 1;
 
-        // Read display control
-        let forcelen = dispcnt & 0x4000 != 0; // Force blank
+        let forcelen = dispcnt & 0x4000 != 0;
         if forcelen {
             for i in 0..FB_SIZE {
                 self.framebuffer[i] = 0xFF000000;
@@ -121,42 +162,32 @@ impl Ppu {
             return;
         }
 
-        // Read BG control registers
-        let bgcnt = [
-            self.io_read_half(mem, BG0CNT),
-            self.io_read_half(mem, BG1CNT),
-            self.io_read_half(mem, BG2CNT),
-            self.io_read_half(mem, BG3CNT),
-        ];
-
-        // Read windows
-        let win0h = self.io_read_half(mem, WIN0H);
-        let win1h = self.io_read_half(mem, WIN1H);
-        let win0v = self.io_read_half(mem, WIN0V);
-        let win1v = self.io_read_half(mem, WIN1V);
-        let winin = self.io_read_half(mem, WININ);
-        let winout = self.io_read_half(mem, WINOUT);
-
-        // Read blending
-        let bldcnt = self.io_read_half(mem, BLDCNT);
-        let bldalpha = self.io_read_half(mem, BLDALPHA);
-        let bldy = self.io_read_half(mem, BLDY) & 0x1F;
+        let bgcnt = self.snap_bgcnt;
+        let win0h = self.snap_win0h;
+        let win1h = self.snap_win1h;
+        let win0v = self.snap_win0v;
+        let win1v = self.snap_win1v;
+        let winin = self.snap_winin;
+        let winout = self.snap_winout;
+        let bldcnt = self.snap_bldcnt;
+        let bldalpha = self.snap_bldalpha;
+        let bldy = self.snap_bldy & 0x1F;
 
         // Read mosaic
-        let mosaic = self.io_read_half(mem, MOSAIC);
+        let mosaic = self.snap_mosaic;
 
         // Read scroll offsets
         let bg_hofs = [
-            self.io_read_half(mem, BG0HOFS) & 0x1FF,
-            self.io_read_half(mem, BG1HOFS) & 0x1FF,
-            self.io_read_half(mem, BG2HOFS) & 0x1FF,
-            self.io_read_half(mem, BG3HOFS) & 0x1FF,
+            self.snap_bg_hofs[0] & 0x1FF,
+            self.snap_bg_hofs[1] & 0x1FF,
+            self.snap_bg_hofs[2] & 0x1FF,
+            self.snap_bg_hofs[3] & 0x1FF,
         ];
         let bg_vofs = [
-            self.io_read_half(mem, BG0VOFS) & 0x1FF,
-            self.io_read_half(mem, BG1VOFS) & 0x1FF,
-            self.io_read_half(mem, BG2VOFS) & 0x1FF,
-            self.io_read_half(mem, BG3VOFS) & 0x1FF,
+            self.snap_bg_vofs[0] & 0x1FF,
+            self.snap_bg_vofs[1] & 0x1FF,
+            self.snap_bg_vofs[2] & 0x1FF,
+            self.snap_bg_vofs[3] & 0x1FF,
         ];
 
         // Render line by line
