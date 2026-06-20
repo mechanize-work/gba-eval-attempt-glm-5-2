@@ -1,3 +1,8 @@
+extern crate alloc;
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
+
 // GBA Memory Map:
 // 0x00000000 - 0x00003FFF  BIOS (16KB)
 // 0x02000000 - 0x0203FFFF  EWRAM (256KB)
@@ -343,9 +348,9 @@ impl Memory {
         // Special read-only/write-only/composite registers
         let off = (addr - IO_BASE) as u16;
         match off {
-            REG_KEYINPUT => {
+            0x130 => {
                 // Active-low: 0 means pressed
-                let keys = self.io_read_half_internal(REG_KEYINPUT);
+                let keys = self.io_read_half_internal(0x130);
                 // keyinput is read-only, returns the complement of pressed keys
                 keys
             }

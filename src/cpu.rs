@@ -468,7 +468,7 @@ impl Cpu {
             (result, carry)
         } else {
             let carry = (val >> (shift - 1)) & 1 != 0;
-            ((val as i32) >> shift) as u32, carry)
+            (((val as i32) >> shift) as u32, carry)
         }
     }
 
@@ -487,24 +487,8 @@ impl Cpu {
         }
     }
 
-    #[inline]
-    pub fn ror_c(val: u32, shift: u32) -> (u32, bool) {
-        if shift == 0 {
-            // RRX: rotate right by 1 through carry
-            let carry = val & 1 != 0;
-            let result = (val >> 1) | (if self.get_flag(FLAG_C) { 0x8000_0000 } else { 0 });
-            (result, carry)
-        } else {
-            let s = shift & 31;
-            if s == 0 {
-                let carry = (val >> 31) & 1 != 0;
-                (val, carry)
-            } else {
-                let carry = (val >> (s - 1)) & 1 != 0;
-                (val.rotate_right(s), carry)
-            }
-        }
-    }
+    // Note: ror_c needs to be a method to access carry flag, but the static
+    // version doesn't. The method version is in the impl block below.
 
     // Add with carry
     #[inline]
@@ -515,7 +499,7 @@ impl Cpu {
             .wrapping_add(cin as u64);
         let result32 = result as u32;
         let carry = result > 0xFFFF_FFFFu64;
-        let overflow = (~(a ^ b) & (a ^ result32) & 0x8000_0000) != 0;
+        let overflow = (!(a ^ b) & (a ^ result32) & 0x8000_0000) != 0;
         (result32, carry, overflow)
     }
 }

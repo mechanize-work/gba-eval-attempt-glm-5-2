@@ -1,6 +1,84 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
+
+// Minimal global allocator for wasm32-unknown-unknown
+// Uses wasm memory.grow to allocate pages
+use core::alloc::{GlobalAlloc, Layout};
+use core::cell::UnsafeCell;
+use core::ptr;
+
+const WASM_PAGE_SIZE: usize = 65536;
+
+struct WasmAllocator {
+    heap_ptr: UnsafeCell<usize>,
+}
+
+static ALLOC: WasmAllocator = WasmAllocator {
+    heap_ptr: UnsafeCell::new(0),
+};
+
+unsafe impl Sync for WasmAllocator {}
+
+impl WasmAllocator {
+    fn heap_ptr(&self) -> usize {
+        unsafe { *self.heap_ptr.get() }
+    }
+
+    fn set_heap_ptr(&self, val: usize) {
+        unsafe { *self.heap_ptr.get() = val; }
+    }
+}
+
+extern "C" {
+    fn memory_grow(num_pages: usize) -> usize;
+    fn memory_size() -> usize;
+}
+
+unsafe impl GlobalAlloc for WasmAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let size = layout.size();
+        let align = layout.align();
+
+        let mut current = self.heap_ptr();
+        if current == 0 {
+            // Initialize: start after the data segment
+            // We'll start at page 1 to be safe
+            current = WASM_PAGE_SIZE;
+            self.set_heap_ptr(current);
+        }
+
+        // Align
+        let aligned = (current + align - 1) & !(align - 1);
+        let new_ptr = aligned + size;
+
+        // Check if we need more pages
+        let current_pages = memory_size() * WASM_PAGE_SIZE;
+        if new_ptr > current_pages {
+            let needed_pages = (new_ptr - current_pages + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
+            let result = memory_grow(needed_pages);
+            if result == usize::MAX {
+                return ptr::null_mut();
+            }
+        }
+
+        self.set_heap_ptr(new_ptr);
+        aligned as *mut u8
+    }
+
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+        // Simple bump allocator - no deallocation
+    }
+}
+
+#[global_allocator]
+static A: WasmAllocator = WasmAllocator {
+    heap_ptr: UnsafeCell::new(0),
+};
+
 mod cpu;
 mod memory;
 mod ppu;

@@ -1,5 +1,9 @@
 // PPU - Pixel Processing Unit
 // Renders GBA graphics to a framebuffer
+extern crate alloc;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::memory::*;
 
 pub const SCREEN_W: usize = 240;
@@ -343,7 +347,7 @@ impl Ppu {
         let screen_base = ((bgcnt >> 8) & 0x1F) as u32 * 0x100;
         let wrap = bgcnt & 0x2000 != 0;
         let map_size = (bgcnt >> 14) & 0x3;
-        let map_dim = 16 << map_size; // 16, 32, 64, 128
+        let map_dim: u32 = 16 << map_size; // 16, 32, 64, 128
 
         // Read affine parameters
         let (pa, pb, pc, pd, ref_x, ref_y) = if bg == 2 {
@@ -393,13 +397,13 @@ impl Ppu {
                 (mx, my)
             };
 
-            let tile_x = (mx >> 3) as u32;
-            let tile_y = (my >> 3) as u32;
+            let tile_x = ((mx >> 3) as u32) & (map_dim - 1);
+            let tile_y = ((my >> 3) as u32) & (map_dim - 1);
             let pixel_x = (mx & 7) as u32;
             let pixel_y = (my & 7) as u32;
 
             // Read screen entry (8-bit for affine)
-            let entry_addr = screen_base_addr + (tile_y * map_dim + tile_x) as u32;
+            let entry_addr = screen_base_addr + tile_y * map_dim + tile_x;
             let tile_num = mem.read_vram_byte(entry_addr & 0x06FF_FFFF) as u32;
 
             // Read pixel data (8bpp, 256-color)
@@ -688,9 +692,9 @@ impl Ppu {
 
             if win0_en {
                 let y_in = if win0_y1 <= win0_y2 {
-                    line as usize >= win0_y1 && line as usize < win0_y2
+                    (line as usize) >= win0_y1 && (line as usize) < win0_y2
                 } else {
-                    line as usize >= win0_y1 || line as usize < win0_y2
+                    (line as usize) >= win0_y1 || (line as usize) < win0_y2
                 };
                 let x_in = if win0_x1 <= win0_x2 {
                     x >= win0_x1 && x < win0_x2
@@ -706,9 +710,9 @@ impl Ppu {
 
             if win1_en {
                 let y_in = if win1_y1 <= win1_y2 {
-                    line as usize >= win1_y1 && line as usize < win1_y2
+                    (line as usize) >= win1_y1 && (line as usize) < win1_y2
                 } else {
-                    line as usize >= win1_y1 || line as usize < win1_y2
+                    (line as usize) >= win1_y1 || (line as usize) < win1_y2
                 };
                 let x_in = if win1_x1 <= win1_x2 {
                     x >= win1_x1 && x < win1_x2
