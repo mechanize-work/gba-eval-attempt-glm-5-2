@@ -74,8 +74,16 @@ impl Cpu {
                 }
             }
             0x2 | 0x3 => {
-                // Load/store
-                self.exec_arm_load_store(mem, instr);
+                // Check for PLD (preload data) - treat as NOP
+                // PLD: cond 0101 0101 1111 1111 1111 0001 11Rm
+                // Bits 27:20 = 0101_0101, Rn=15 (PC)
+                if (instr & 0x0F70F000) == 0x0550F000 {
+                    self.r[15] = self.r[15].wrapping_add(4);
+                    self.cycles += 1;
+                } else {
+                    // Load/store
+                    self.exec_arm_load_store(mem, instr);
+                }
             }
             0x4 => {
                 // Load/store multiple
