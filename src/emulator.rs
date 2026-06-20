@@ -246,26 +246,6 @@ impl Emulator {
     }
 
     pub fn run_frame(&mut self) {
-        // Simulate BIOS execution (~768000 cycles = ~2.73 frames)
-        // Frame 0: BIOS with force blank (white)
-        // Frame 1: BIOS with display on (black, palette cleared)
-        // Frame 2: BIOS finishes + ROM starts (black)
-        // Frame 3+: ROM execution
-        if self.frame_count < 3 {
-            self.advance_hardware(CYCLES_PER_FRAME);
-            if self.frame_count == 0 {
-                // Frame 0: force blank (white)
-                // DISPCNT already has force blank set
-            } else {
-                // Frame 1-2: BIOS clears force blank, display shows black
-                self.mem.io[0x00] = 0x00; // Clear force blank
-                self.mem.io[0x01] = 0x00;
-            }
-            self.ppu.render_frame(&self.mem);
-            self.frame_count += 1;
-            return;
-        }
-
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
         let mut halt_count: u64 = 0;
