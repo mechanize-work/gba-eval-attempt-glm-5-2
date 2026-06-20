@@ -214,7 +214,11 @@ impl Cpu {
     // Switch to a new mode, banking/unbanking registers
     pub fn switch_mode(&mut self, new_mode: u32) {
         let old_mode = self.get_mode();
+        self.switch_mode_from(old_mode, new_mode);
+    }
 
+    // Switch mode with explicit old_mode (needed when CPSR was already restored)
+    pub fn switch_mode_from(&mut self, old_mode: u32, new_mode: u32) {
         if old_mode == new_mode {
             return;
         }

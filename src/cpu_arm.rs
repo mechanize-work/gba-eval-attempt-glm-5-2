@@ -504,13 +504,12 @@ impl Cpu {
         // Set flags for logical ops
         if s && !arith {
             if rd == 15 {
-                // In privileged mode, CPSR = SPSR
-                let mode = self.get_mode();
-                if mode != MODE_USR && mode != MODE_SYS {
+                let old_mode = self.get_mode();
+                if old_mode != MODE_USR && old_mode != MODE_SYS {
                     self.cpsr = self.get_spsr();
                     let new_mode = self.get_mode();
-                    if new_mode != mode {
-                        self.switch_mode(new_mode);
+                    if new_mode != old_mode {
+                        self.switch_mode_from(old_mode, new_mode);
                     }
                 }
             } else {
@@ -521,12 +520,12 @@ impl Cpu {
 
         // For arithmetic ops, S flag already handled
         if s && arith && rd == 15 {
-            let mode = self.get_mode();
-            if mode != MODE_USR && mode != MODE_SYS {
+            let old_mode = self.get_mode();
+            if old_mode != MODE_USR && old_mode != MODE_SYS {
                 self.cpsr = self.get_spsr();
                 let new_mode = self.get_mode();
-                if new_mode != mode {
-                    self.switch_mode(new_mode);
+                if new_mode != old_mode {
+                    self.switch_mode_from(old_mode, new_mode);
                 }
             }
         }
