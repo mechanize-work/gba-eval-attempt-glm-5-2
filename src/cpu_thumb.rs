@@ -449,7 +449,7 @@ impl Cpu {
         let addr = (self.r[15] & !3).wrapping_add(4).wrapping_add(imm);
         self.r[rd] = mem.read_word(addr);
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 3;
+        self.cycles += 3 + Self::mem_wait(addr);
     }
 
     fn exec_thumb_reg_offset(&mut self, instr: u16, mem: &mut Memory) {
@@ -541,10 +541,10 @@ impl Cpu {
 
         if is_load {
             self.r[rd] = mem.read_half(addr) as u32;
-            self.cycles += 3;
+            self.cycles += 3 + Self::mem_wait(addr);
         } else {
             mem.write_half(addr, self.r[rd] as u16);
-            self.cycles += 2;
+            self.cycles += 2 + Self::mem_wait(addr);
         }
         self.r[15] = self.r[15].wrapping_add(2);
     }
@@ -557,10 +557,10 @@ impl Cpu {
 
         if is_load {
             self.r[rd] = mem.read_word(addr);
-            self.cycles += 3;
+            self.cycles += 3 + Self::mem_wait(addr);
         } else {
             mem.write_word(addr, self.r[rd]);
-            self.cycles += 2;
+            self.cycles += 2 + Self::mem_wait(addr);
         }
         self.r[15] = self.r[15].wrapping_add(2);
     }
