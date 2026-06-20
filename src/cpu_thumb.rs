@@ -59,11 +59,13 @@ impl Cpu {
                 // bits 15-12 = 1000
                 self.exec_thumb_halfword_imm_offset(instr, mem);
             }
-            0x24..=0x25 => {
+            0x24..=0x27 => {
                 // THUMB.11: SP-relative load/store
+                // 0x24-0x25: STR Rd, [SP, #imm8*4] (bit 11=0)
+                // 0x26-0x27: LDR Rd, [SP, #imm8*4] (bit 11=1)
                 self.exec_thumb_sp_rel(instr, mem);
             }
-            0x26..=0x27 | 0x3A..=0x3B => {
+            0x3A..=0x3B => {
                 // Undefined/reserved
                 self.r[15] = self.r[15].wrapping_add(2);
                 self.cycles += 1;
@@ -574,16 +576,17 @@ impl Cpu {
     }
 
     fn exec_thumb_load_address(&mut self, instr: u16) {
-        // Bit 11: 0 = SP-relative, 1 = PC-relative
-        let is_pc = (instr >> 11) & 1 != 0;
+        // GBATEK: bit 11 = 0 -> ADD Rd, PC, #imm8*4
+        //         bit 11 = 1 -> ADD Rd, SP, #imm8*4
+        let is_sp = (instr >> 11) & 1 != 0;
         let rd = ((instr >> 8) & 0x7) as usize;
         let imm = ((instr & 0xFF) as u32) << 2;
 
-        if is_pc {
+        if is_sp {
+            self.r[rd] = self.r[13].wrapping_add(imm);
+        } else {
             // PC is current instruction + 4, word-aligned
             self.r[rd] = ((self.r[15].wrapping_add(4)) & !3).wrapping_add(imm);
-        } else {
-            self.r[rd] = self.r[13].wrapping_add(imm);
         }
         self.r[15] = self.r[15].wrapping_add(2);
         self.cycles += 1;
