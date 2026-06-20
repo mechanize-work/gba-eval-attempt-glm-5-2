@@ -447,7 +447,7 @@ impl Cpu {
         let addr = (self.r[15] & !3).wrapping_add(4).wrapping_add(imm);
         self.r[rd] = mem.read_word(addr);
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 1;
+        self.cycles += 3;
     }
 
     fn exec_thumb_reg_offset(&mut self, instr: u16, mem: &mut Memory) {
@@ -625,14 +625,16 @@ impl Cpu {
         if load_pc {
             let val = mem.read_word(addr);
             self.r[15] = val & !1;
+            if val & 1 != 0 {
+                self.cpsr |= FLAG_T;
+            }
             addr = addr.wrapping_add(4);
-            self.cycles += 3;
-        } else {
-            self.cycles += 1;
         }
         self.r[13] = self.r[13].wrapping_add(count * 4);
         self.cycles += count as u64 + 1;
-        self.r[15] = self.r[15].wrapping_add(2);
+        if !load_pc {
+            self.r[15] = self.r[15].wrapping_add(2);
+        }
     }
 
     fn exec_thumb_multiple(&mut self, instr: u16, mem: &mut Memory) {
