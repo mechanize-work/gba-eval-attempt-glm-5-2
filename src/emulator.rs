@@ -240,8 +240,17 @@ impl Emulator {
             self.check_and_handle_interrupts();
 
             if self.cpu.halted {
-                self.cycle_count = self.cycle_count.wrapping_add(1);
-                self.advance_hardware(1);
+                // Fast-forward to next VBlank or interrupt
+                let cycles_to_vblank = if self.current_scanline < VISIBLE_LINES as u16 {
+                    (VISIBLE_LINES as u32 - self.current_scanline as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
+                } else {
+                    // Already in VBlank, wait for next one
+                    (TOTAL_LINES as u32 - self.current_scanline as u32 + VISIBLE_LINES as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
+                };
+                let remaining = target_cycles.wrapping_sub(self.cycle_count);
+                let advance = cycles_to_vblank.min(remaining).max(1);
+                self.cycle_count = self.cycle_count.wrapping_add(advance);
+                self.advance_hardware(advance);
                 instr_count += 1;
                 halt_count += 1;
             } else {
@@ -255,6 +264,13 @@ impl Emulator {
 
         // Debug
         let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
+        #[cfg(feature = "std")]
+        if self.frame_count < 10 || (self.frame_count % 10 == 0) {
+            let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
+            let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
+            eprintln!("Frame {}: dispcnt={:04X} instrs={} halted={} pal={} vram={}",
+                self.frame_count, dispcnt, instr_count, self.cpu.halted, pal_nonzero, vram_nonzero);
+        }
 
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
