@@ -109,7 +109,7 @@ impl Cpu {
                 // PC = PC + 4 + offset*2 (pipeline: PC is current+4 in thumb)
                 let target = self.r[15].wrapping_add(4).wrapping_add((offset as u32).wrapping_mul(2));
                 self.r[15] = target;
-                self.cycles += 2;
+                self.cycles += 3;
             }
             0x3C..=0x3D => {
                 // THUMB.18: Long branch with link (first instruction)
@@ -703,7 +703,7 @@ impl Cpu {
             // PC + 4 pipeline offset for THUMB
             let target = self.r[15].wrapping_add(4).wrapping_add((offset as u32).wrapping_mul(2));
             self.r[15] = target;
-            self.cycles += 2;
+            self.cycles += 3;
         } else {
             self.r[15] = self.r[15].wrapping_add(2);
             self.cycles += 1;
