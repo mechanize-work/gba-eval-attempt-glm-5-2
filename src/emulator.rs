@@ -253,6 +253,35 @@ impl Emulator {
 
         self.cycle_count = self.cycle_count.wrapping_sub(CYCLES_PER_FRAME);
 
+        // Debug
+        let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
+        if self.frame_count < 10 || dispcnt != 0x0080 {
+            let bg0cnt = (self.mem.io[0x08] as u16) | ((self.mem.io[0x09] as u16) << 8);
+            let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
+            let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
+            eprintln!("Frame {}: dispcnt={:04X} bg0cnt={:04X} pal={} vram={} instrs={} pc={:08X} halted={} viw={} vbo={}",
+                self.frame_count, dispcnt, bg0cnt, pal_nonzero, vram_nonzero, instr_count, self.cpu.r[15],
+                self.cpu.halted, self.cpu.vblank_intr_wait, self.vblank_occurred);
+            let ie = (self.mem.io[0x200] as u16) | ((self.mem.io[0x201] as u16) << 8);
+            let ime = (self.mem.io[0x208] as u16) | ((self.mem.io[0x209] as u16) << 8);
+            eprintln!("  ie={:04X} ime={:04X}", ie, ime);
+            let irq_vec = self.mem.read_word(0x03FFFFFC);
+            eprintln!("  irq_vec={:08X}", irq_vec);
+            let handler_code = self.mem.read_word(irq_vec & !3);
+            eprintln!("  handler_code={:08X}", handler_code);
+            let vblank_ctr = self.mem.read_word(0x030015E0);
+            eprintln!("  vblank_ctr={}", vblank_ctr);
+            // Dump handler code
+            if self.frame_count == 1 {
+                eprintln!("  --- Handler code ---");
+                for i in 0..30 {
+                    let addr = (irq_vec & !3) + i * 4;
+                    let v = self.mem.read_word(addr);
+                    eprintln!("  {:08X}: {:08X}", addr, v);
+                }
+            }
+        }
+
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
         self.frame_count += 1;
@@ -287,20 +316,25 @@ impl Emulator {
             self.cpu.vblank_intr_wait = false;
             self.vblank_occurred = false;
             
-            // Increment the VBlank counter that the game's init code uses
+            // Increment VBlank counter (game-specific, but commonly at this address)
             let counter = self.mem.read_word(0x0300_15E0);
             self.mem.write_word(0x0300_15E0, counter.wrapping_add(1));
             
-            // Set VBlank IF bit and raise IRQ to process VBlank handler
+            // Set VBlank IF bit so the IRQ handler can process it
             let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
             self.mem.io[0x202] = ((if_val | 1) & 0xFF) as u8;
             self.mem.io[0x203] = (((if_val | 1) >> 8) & 0xFF) as u8;
             self.irq.if_ = if_val | 1;
             
             if !self.cpu.get_flag(FLAG_I) && self.irq.ime != 0 {
+                #[cfg(feature = "std")]
+                eprintln!("VBlankIntrWait wake: raising IRQ, ie={:04X} if={:04X} ime={:04X}", self.irq.ie, self.irq.if_, self.irq.ime);
                 self.irq_pending_bits = 1; // VBlank bit
                 self.irq_processing = true;
                 self.cpu.raise_irq();
+            } else {
+                #[cfg(feature = "std")]
+                eprintln!("VBlankIntrWait wake: NOT raising IRQ, I={} ime={:04X}", self.cpu.get_flag(FLAG_I), self.irq.ime);
             }
             // Don't clear VBlank IF here - let the IRQ handler see it.
             // The irq_processing cleanup will clear it after the handler returns.
@@ -425,7 +459,14 @@ impl Emulator {
         let cycles = self.cpu.cycles as u32;
         self.cpu.cycles = 0;
         self.cycle_count += cycles;
+        // Save whether VBlankIntrWait was just called (before advance_hardware)
+        let just_halted_viw = !was_halted && self.cpu.halted && self.cpu.vblank_intr_wait;
         self.advance_hardware(cycles);
+
+        // Don't clear vblank_occurred here - it might be a legitimate new VBlank
+        // that happened during advance_hardware. The clearing above is sufficient
+        // for VBlank that occurred before VBlankIntrWait was called.
+        let _ = just_halted_viw;
     }
 
     pub fn advance_hardware(&mut self, cycles: u32) {
@@ -518,6 +559,8 @@ impl Emulator {
             if self.current_scanline == VISIBLE_LINES as u16 {
                 dispstat |= 0x2; // Set VBlank bit
                 self.vblank_occurred = true;
+                #[cfg(feature = "std")]
+                eprintln!("VBlank at scanline {} cycle_in_scanline={} cycle_count={}", self.current_scanline, self.cycle_in_scanline, self.cycle_count);
                 // Only signal VBlank IRQ if not in VBlankIntrWait
                 if !self.cpu.vblank_intr_wait {
                     self.irq.signal(IRQ_VBLANK);
