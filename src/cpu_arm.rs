@@ -512,7 +512,12 @@ impl Cpu {
         } else {
             self.r[rd] = result;
             self.r[15] = self.r[15].wrapping_add(4);
-            self.cycles += 1;
+            // Register shift takes an extra cycle
+            if (instr >> 4) & 1 != 0 && !immediate {
+                self.cycles += 2;
+            } else {
+                self.cycles += 1;
+            }
         }
 
         // Set flags for logical ops
