@@ -1,7 +1,7 @@
 // ARM7TDMI CPU implementation
 // Supports ARM and THUMB instruction sets
 
-use crate::memory::Memory;
+
 
 // CPU modes
 pub const MODE_USR: u32 = 0x10;

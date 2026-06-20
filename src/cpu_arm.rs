@@ -1,7 +1,7 @@
 // ARM instruction execution
 use crate::cpu::*;
 use crate::memory::Memory;
-use core::cell::RefCell;
+
 
 fn integer_sqrt(val: u32) -> u32 {
     if val == 0 { return 0; }
