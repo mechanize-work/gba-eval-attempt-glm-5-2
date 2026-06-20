@@ -148,8 +148,8 @@ impl Ppu {
 
     // Render a complete frame
     pub fn render_frame(&mut self, mem: &Memory) {
-        // Use snapshotted display registers (captured at VBlank start)
-        let dispcnt = self.snap_dispcnt;
+        // Use live display registers (not snapshot)
+        let dispcnt = (mem.io[0x00] as u16) | ((mem.io[0x01] as u16) << 8);
         let mode = dispcnt & 0x7;
         let bg_en = (dispcnt >> 8) & 0xF;
         let obj_en = (dispcnt >> 12) & 1;
@@ -162,32 +162,37 @@ impl Ppu {
             return;
         }
 
-        let bgcnt = self.snap_bgcnt;
-        let win0h = self.snap_win0h;
-        let win1h = self.snap_win1h;
-        let win0v = self.snap_win0v;
-        let win1v = self.snap_win1v;
-        let winin = self.snap_winin;
-        let winout = self.snap_winout;
-        let bldcnt = self.snap_bldcnt;
-        let bldalpha = self.snap_bldalpha;
-        let bldy = self.snap_bldy & 0x1F;
+        let bgcnt = [
+            (mem.io[0x08] as u16) | ((mem.io[0x09] as u16) << 8),
+            (mem.io[0x0A] as u16) | ((mem.io[0x0B] as u16) << 8),
+            (mem.io[0x0C] as u16) | ((mem.io[0x0D] as u16) << 8),
+            (mem.io[0x0E] as u16) | ((mem.io[0x0F] as u16) << 8),
+        ];
+        let win0h = (mem.io[0x40] as u16) | ((mem.io[0x41] as u16) << 8);
+        let win1h = (mem.io[0x42] as u16) | ((mem.io[0x43] as u16) << 8);
+        let win0v = (mem.io[0x44] as u16) | ((mem.io[0x45] as u16) << 8);
+        let win1v = (mem.io[0x46] as u16) | ((mem.io[0x47] as u16) << 8);
+        let winin = (mem.io[0x48] as u16) | ((mem.io[0x49] as u16) << 8);
+        let winout = (mem.io[0x4A] as u16) | ((mem.io[0x4B] as u16) << 8);
+        let bldcnt = (mem.io[0x50] as u16) | ((mem.io[0x51] as u16) << 8);
+        let bldalpha = (mem.io[0x52] as u16) | ((mem.io[0x53] as u16) << 8);
+        let bldy = ((mem.io[0x54] as u16) | ((mem.io[0x55] as u16) << 8)) & 0x1F;
 
         // Read mosaic
-        let mosaic = self.snap_mosaic;
+        let mosaic = (mem.io[0x4C] as u16) | ((mem.io[0x4D] as u16) << 8);
 
         // Read scroll offsets
         let bg_hofs = [
-            self.snap_bg_hofs[0] & 0x1FF,
-            self.snap_bg_hofs[1] & 0x1FF,
-            self.snap_bg_hofs[2] & 0x1FF,
-            self.snap_bg_hofs[3] & 0x1FF,
+            ((mem.io[0x10] as u16) | ((mem.io[0x11] as u16) << 8)) & 0x1FF,
+            ((mem.io[0x14] as u16) | ((mem.io[0x15] as u16) << 8)) & 0x1FF,
+            ((mem.io[0x18] as u16) | ((mem.io[0x19] as u16) << 8)) & 0x1FF,
+            ((mem.io[0x1C] as u16) | ((mem.io[0x1D] as u16) << 8)) & 0x1FF,
         ];
         let bg_vofs = [
-            self.snap_bg_vofs[0] & 0x1FF,
-            self.snap_bg_vofs[1] & 0x1FF,
-            self.snap_bg_vofs[2] & 0x1FF,
-            self.snap_bg_vofs[3] & 0x1FF,
+            ((mem.io[0x12] as u16) | ((mem.io[0x13] as u16) << 8)) & 0x1FF,
+            ((mem.io[0x16] as u16) | ((mem.io[0x17] as u16) << 8)) & 0x1FF,
+            ((mem.io[0x1A] as u16) | ((mem.io[0x1B] as u16) << 8)) & 0x1FF,
+            ((mem.io[0x1E] as u16) | ((mem.io[0x1F] as u16) << 8)) & 0x1FF,
         ];
 
         // Render line by line
