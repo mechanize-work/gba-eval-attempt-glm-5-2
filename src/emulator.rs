@@ -413,6 +413,18 @@ impl Emulator {
         // Read instruction at PC
         let pc = self.cpu.r[15];
 
+        // Detect invalid PC
+        #[cfg(feature = "std")]
+        if !self.bad_pc_warned && !(pc < 0x04000 || (pc >= 0x02000000 && pc < 0x04000000) || (pc >= 0x08000000 && pc < 0x0E000000)) {
+            eprintln!("BAD PC: {:08X} cpsr={:08X} r14={:08X} frame={}", 
+                pc, self.cpu.cpsr, self.cpu.r[14], self.frame_count);
+            eprintln!("  last: pc={:08X} instr={:08X}", self.last_pc, self.last_instr);
+            eprintln!("  prev: pc={:08X} instr={:08X}", self.prev_pc, self.prev_instr);
+            for i in 0..16 {
+                eprintln!("  r{}={:08X}", i, self.cpu.r[i]);
+            }
+            self.bad_pc_warned = true;
+        }
         // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
         // This happens because our BIOS stub doesn't implement all functions
         if pc < 0x4000 {
@@ -443,9 +455,17 @@ impl Emulator {
 
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
+            self.prev_pc = self.last_pc;
+            self.prev_instr = self.last_instr;
+            self.last_pc = pc;
+            self.last_instr = instr as u32;
             self.cpu.execute_thumb(&mut self.mem, instr);
         } else {
             let instr = self.mem.read_word(pc);
+            self.prev_pc = self.last_pc;
+            self.prev_instr = self.last_instr;
+            self.last_pc = pc;
+            self.last_instr = instr;
             self.cpu.execute_arm(&mut self.mem, instr);
             // ARM: 32-bit instructions from ROM need fetch overhead
             self.cpu.cycles += Cpu::mem_wait_cfg(pc, self.mem.waitcnt, true);
