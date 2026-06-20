@@ -449,7 +449,7 @@ impl Cpu {
         let addr = (self.r[15] & !3).wrapping_add(4).wrapping_add(imm);
         self.r[rd] = mem.read_word(addr);
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 3 + Self::mem_wait(addr);
+        self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
     }
 
     fn exec_thumb_reg_offset(&mut self, instr: u16, mem: &mut Memory) {
@@ -461,10 +461,10 @@ impl Cpu {
         let addr = self.r[rb].wrapping_add(self.r[ro]);
 
         match op {
-            0x0 => { mem.write_word(addr, self.r[rd]); self.cycles += 2 + Self::mem_wait(addr); }
-            0x1 => { mem.write_byte(addr, self.r[rd] as u8); self.cycles += 2 + Self::mem_wait(addr); }
-            0x2 => { self.r[rd] = mem.read_word(addr & !3); self.cycles += 3 + Self::mem_wait(addr); }
-            0x3 => { self.r[rd] = mem.read_byte(addr) as u32; self.cycles += 3 + Self::mem_wait(addr); }
+            0x0 => { mem.write_word(addr, self.r[rd]); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
+            0x1 => { mem.write_byte(addr, self.r[rd] as u8); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
+            0x2 => { self.r[rd] = mem.read_word(addr & !3); self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
+            0x3 => { self.r[rd] = mem.read_byte(addr) as u32; self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
             _ => {}
         }
         self.r[15] = self.r[15].wrapping_add(2);
@@ -483,10 +483,10 @@ impl Cpu {
         // H flag (bit 11) and S flag (bit 10) determine the operation:
         // 00 = STRH, 01 = LDSB, 10 = LDRH, 11 = LDSH
         match op {
-            0x0 => { mem.write_half(addr, self.r[rd] as u16); self.cycles += 2 + Self::mem_wait(addr); }
-            0x1 => { self.r[rd] = mem.read_byte(addr) as i8 as u32; self.cycles += 3 + Self::mem_wait(addr); } // LDSB
-            0x2 => { self.r[rd] = mem.read_half(addr) as u32; self.cycles += 3 + Self::mem_wait(addr); }       // LDRH
-            0x3 => { self.r[rd] = mem.read_half(addr) as i16 as u32; self.cycles += 3 + Self::mem_wait(addr); } // LDSH
+            0x0 => { mem.write_half(addr, self.r[rd] as u16); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
+            0x1 => { self.r[rd] = mem.read_byte(addr) as i8 as u32; self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); } // LDSB
+            0x2 => { self.r[rd] = mem.read_half(addr) as u32; self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }       // LDRH
+            0x3 => { self.r[rd] = mem.read_half(addr) as i16 as u32; self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); } // LDSH
             _ => {}
         }
         self.r[15] = self.r[15].wrapping_add(2);
@@ -513,18 +513,18 @@ impl Cpu {
         if is_byte {
             if is_load {
                 self.r[rd] = mem.read_byte(addr) as u32;
-                self.cycles += 3 + Self::mem_wait(addr);
+                self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
             } else {
                 mem.write_byte(addr, self.r[rd] as u8);
-                self.cycles += 2 + Self::mem_wait(addr);
+                self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
             }
         } else {
             if is_load {
                 self.r[rd] = mem.read_word(addr & !3);
-                self.cycles += 3 + Self::mem_wait(addr);
+                self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
             } else {
                 mem.write_word(addr & !3, self.r[rd]);
-                self.cycles += 2 + Self::mem_wait(addr);
+                self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
             }
         }
         self.r[15] = self.r[15].wrapping_add(2);
@@ -541,10 +541,10 @@ impl Cpu {
 
         if is_load {
             self.r[rd] = mem.read_half(addr) as u32;
-            self.cycles += 3 + Self::mem_wait(addr);
+            self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         } else {
             mem.write_half(addr, self.r[rd] as u16);
-            self.cycles += 2 + Self::mem_wait(addr);
+            self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         }
         self.r[15] = self.r[15].wrapping_add(2);
     }
@@ -557,10 +557,10 @@ impl Cpu {
 
         if is_load {
             self.r[rd] = mem.read_word(addr);
-            self.cycles += 3 + Self::mem_wait(addr);
+            self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         } else {
             mem.write_word(addr, self.r[rd]);
-            self.cycles += 2 + Self::mem_wait(addr);
+            self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         }
         self.r[15] = self.r[15].wrapping_add(2);
     }

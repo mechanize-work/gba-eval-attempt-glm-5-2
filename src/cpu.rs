@@ -190,6 +190,33 @@ impl Cpu {
         }
     }
 
+    /// Memory wait states with WAITCNT configuration
+    #[inline]
+    pub fn mem_wait_cfg(addr: u32, waitcnt: u16, is_sequential: bool) -> u64 {
+        match addr >> 24 {
+            0x02 => if is_sequential { 1 } else { 2 }, // EWRAM: 2S/3N total
+            0x08 | 0x09 => {
+                // ROM0: depends on WAITCNT bits 4,3:2
+                let n_wait = [4u32, 3, 2, 8][((waitcnt >> 2) & 3) as usize];
+                let s_wait = if waitcnt & 0x10 != 0 { 1u32 } else { 2u32 };
+                if is_sequential { (s_wait - 1) as u64 } else { (n_wait - 1) as u64 }
+            }
+            0x0A | 0x0B => {
+                // ROM1: depends on WAITCNT bits 8,7:6
+                let n_wait = [4u32, 3, 2, 8][((waitcnt >> 6) & 3) as usize];
+                let s_wait = if waitcnt & 0x100 != 0 { 1u32 } else { 2u32 };
+                if is_sequential { (s_wait - 1) as u64 } else { (n_wait - 1) as u64 }
+            }
+            0x0C | 0x0D => {
+                // ROM2: depends on WAITCNT bits 12,11:10
+                let n_wait = [4u32, 3, 2, 8][((waitcnt >> 10) & 3) as usize];
+                let s_wait = if waitcnt & 0x1000 != 0 { 1u32 } else { 2u32 };
+                if is_sequential { (s_wait - 1) as u64 } else { (n_wait - 1) as u64 }
+            }
+            _ => 0,
+        }
+    }
+
     #[inline]
     pub fn set_flag(&mut self, flag: u32, on: bool) {
         if on {

@@ -164,6 +164,7 @@ pub struct Memory {
     pub apu_regs: [u16; 0x30], // Sound registers 0x60-0x8F
     pub soundbias: u16,
     pub haltcnt: u8,
+    pub waitcnt: u16,
 }
 
 impl Memory {
@@ -190,6 +191,7 @@ impl Memory {
             apu_regs: [0; 0x30],
             soundbias: 0x200,
             haltcnt: 0,
+            waitcnt: 0,
         }
     }
 
@@ -405,6 +407,13 @@ impl Memory {
             return;
         }
         if a == 0x130 || a == 0x131 { return; }
+        if a == 0x204 {
+            // WAITCNT
+            self.io[a] = (val & 0xFF) as u8;
+            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            self.waitcnt = val;
+            return;
+        }
         if a == 0x300 {
             self.io[a] = (val & 0xFF) as u8;
             self.io[a + 1] = ((val >> 8) & 0xFF) as u8;

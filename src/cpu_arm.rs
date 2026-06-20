@@ -668,7 +668,7 @@ impl Cpu {
                 mem.read_word(effective_addr & !3)
             };
             // Add memory wait states
-            let extra = Self::mem_wait(effective_addr);
+            let extra = Self::mem_wait_cfg(effective_addr, mem.waitcnt, false);
             if rd == 15 {
                 self.r[15] = val & !1;
                 if val & 1 != 0 {
@@ -693,7 +693,7 @@ impl Cpu {
                 mem.write_word(effective_addr & !3, val);
             }
             // Add memory wait states for stores
-            self.cycles += 2 + Self::mem_wait(effective_addr);
+            self.cycles += 2 + Self::mem_wait_cfg(effective_addr, mem.waitcnt, false);
         }
 
         // Write-back
@@ -761,7 +761,7 @@ impl Cpu {
                 }
                 _ => { val = 0; }
             }
-            let extra = Self::mem_wait(effective_addr);
+            let extra = Self::mem_wait_cfg(effective_addr, mem.waitcnt, false);
             if rd == 15 {
                 self.r[15] = val & !1;
                 if val & 1 != 0 {
@@ -778,7 +778,7 @@ impl Cpu {
             // STRH
             let val = if rd == 15 { self.r[15] + 12 } else { self.r[rd] };
             mem.write_half(effective_addr, val as u16);
-            self.cycles += 2 + Self::mem_wait(effective_addr);
+            self.cycles += 2 + Self::mem_wait_cfg(effective_addr, mem.waitcnt, false);
         }
 
         // Write-back
