@@ -180,6 +180,16 @@ impl Cpu {
         (self.cpsr & FLAG_T) != 0
     }
 
+    /// Memory wait states for cycle-accurate timing
+    #[inline]
+    pub fn mem_wait(addr: u32) -> u64 {
+        match addr >> 24 {
+            0x02 => 2, // EWRAM: +2 cycles
+            0x08 | 0x09 | 0x0A | 0x0B | 0x0C | 0x0D => 3, // ROM: +3 cycles
+            _ => 0, // IWRAM/IO/Palette/VRAM/OAM: no extra
+        }
+    }
+
     #[inline]
     pub fn set_flag(&mut self, flag: u32, on: bool) {
         if on {

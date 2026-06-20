@@ -667,6 +667,12 @@ impl Cpu {
             } else {
                 mem.read_word(effective_addr & !3)
             };
+            // Add memory wait states
+            let extra = match effective_addr >> 24 {
+                0x02 => 2, // EWRAM: +2 cycles
+                0x08 | 0x09 | 0x0A | 0x0B | 0x0C | 0x0D => 3, // ROM: +3 cycles
+                _ => 0,
+            };
             if rd == 15 {
                 self.r[15] = val & !1;
                 if val & 1 != 0 {
@@ -674,10 +680,10 @@ impl Cpu {
                 } else {
                     self.r[15] &= !3;
                 }
-                self.cycles += 3;
+                self.cycles += 3 + extra;
             } else {
                 self.r[rd] = val;
-                self.cycles += 3;
+                self.cycles += 3 + extra;
             }
         } else {
             let val = if rd == 15 {
@@ -690,7 +696,13 @@ impl Cpu {
             } else {
                 mem.write_word(effective_addr & !3, val);
             }
-            self.cycles += 2;
+            // Add memory wait states for stores
+            let extra = match effective_addr >> 24 {
+                0x02 => 2, // EWRAM: +2 cycles
+                0x08 | 0x09 | 0x0A | 0x0B | 0x0C | 0x0D => 3, // ROM: +3 cycles
+                _ => 0,
+            };
+            self.cycles += 2 + extra;
         }
 
         // Write-back
