@@ -293,19 +293,24 @@ impl Emulator {
         self.irq.ime = (self.mem.io[0x208] as u16) | ((self.mem.io[0x209] as u16) << 8);
 
         // Check VBlankIntrWait FIRST - before regular IRQ check
-        // This ensures the VBlank counter gets incremented
+        // VBlankIntrWait returns when the VBlank IRQ fires (requires IME, IE, and IF)
         if self.cpu.halted && self.cpu.vblank_intr_wait && self.vblank_occurred {
+            // VBlank occurred - set IF bit
+            let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
+            if if_val & 1 == 0 {
+                self.mem.io[0x202] = ((if_val | 1) & 0xFF) as u8;
+                self.mem.io[0x203] = (((if_val | 1) >> 8) & 0xFF) as u8;
+                self.irq.if_ = if_val | 1;
+            }
+            
+            // Wake the CPU on VBlank regardless of IME/IE
+            // (VBlankIntrWait should return when VBlank IF is set)
             self.cpu.halted = false;
             self.cpu.vblank_intr_wait = false;
             self.vblank_occurred = false;
             
-            // Set VBlank IF bit so the IRQ handler can process it
-            let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
-            self.mem.io[0x202] = ((if_val | 1) & 0xFF) as u8;
-            self.mem.io[0x203] = (((if_val | 1) >> 8) & 0xFF) as u8;
-            self.irq.if_ = if_val | 1;
-            
-            if !self.cpu.get_flag(FLAG_I) && self.irq.ime != 0 {
+            // Raise IRQ if possible
+            if !self.cpu.get_flag(FLAG_I) && self.irq.ime != 0 && (self.irq.ie & 1) != 0 {
                 self.irq_pending_bits = 1; // VBlank bit
                 self.irq_processing = true;
                 self.cpu.raise_irq();

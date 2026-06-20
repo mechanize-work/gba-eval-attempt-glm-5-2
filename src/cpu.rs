@@ -77,6 +77,7 @@ pub struct Cpu {
 
     pub halted: bool,
     pub vblank_intr_wait: bool,
+    pub vblank_call_count: u32,
     pub cycles: u64,
 
     // Pipeline
@@ -119,6 +120,7 @@ impl Cpu {
             usr_r14: 0,
             halted: false,
             vblank_intr_wait: false,
+            vblank_call_count: 0,
             cycles: 0,
             pipeline_fetch: 0,
             pipeline_decode: 0,
