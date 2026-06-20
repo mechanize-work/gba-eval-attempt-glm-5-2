@@ -1302,6 +1302,64 @@ impl Cpu {
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 5 + total_count as u64;
             }
+            0x09 => {
+                // ArcTan: R0 = tan (16.16 fixed) -> R0 = angle (16.16 fixed)
+                let tan = self.r[0] as i32;
+                let angle = (tan as f64).atan() * 65536.0;
+                self.r[0] = angle as i32 as u32;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 10;
+            }
+            0x0A => {
+                // ArcTan2: R0=y, R1=x (16.16 fixed) -> R0 = angle (16.16 fixed)
+                let y = self.r[0] as i32 as f64 / 65536.0;
+                let x = self.r[1] as i32 as f64 / 65536.0;
+                let angle = y.atan2(x) * 65536.0;
+                self.r[0] = angle as i32 as u32;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 10;
+            }
+            0x0D => {
+                // ObjAffineSet: calculate affine matrix from sprite data
+                // R0 = source (sx, sy, theta as halfwords)
+                // R1 = dest (PA, PB, PC, PD as halfwords)
+                // R2 = number of entries
+                // R3 = source offset per entry (2=half, 4=full, 8=double)
+                let src = self.r[0];
+                let dst = self.r[1];
+                let count = self.r[2] as usize;
+                let src_off = self.r[3] as u32;
+                let dst_off: u32 = 8; // 4 halfwords = 8 bytes per entry
+                
+                for i in 0..count {
+                    let s = src.wrapping_add(i as u32 * src_off);
+                    let d = dst.wrapping_add(i as u32 * dst_off);
+                    
+                    let sx = mem.read_half(s) as i16 as i32;
+                    let sy = mem.read_half(s.wrapping_add(2)) as i16 as i32;
+                    let theta = mem.read_half(s.wrapping_add(4)) as u16 as i32; // 0-65535 = 0-2pi
+                    
+                    // Convert theta to radians: theta / 65536 * 2 * PI
+                    let rad = (theta as f64 / 65536.0) * 2.0 * core::f64::consts::PI;
+                    let cos = rad.cos();
+                    let sin = rad.sin();
+                    
+                    // PA = sx * cos, PB = -sx * sin, PC = sy * sin, PD = sy * cos
+                    // Values are 8.8 fixed point
+                    let pa = ((sx as f64) * cos * 256.0) as i16 as u16;
+                    let pb = ((sx as f64) * (-sin) * 256.0) as i16 as u16;
+                    let pc = ((sy as f64) * sin * 256.0) as i16 as u16;
+                    let pd = ((sy as f64) * cos * 256.0) as i16 as u16;
+                    
+                    mem.write_half(d, pa);
+                    mem.write_half(d.wrapping_add(2), pb);
+                    mem.write_half(d.wrapping_add(4), pc);
+                    mem.write_half(d.wrapping_add(6), pd);
+                }
+                
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 10 + count as u64 * 5;
+            }
             0x0E => {
                 // BitUnPack: skip for now
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
