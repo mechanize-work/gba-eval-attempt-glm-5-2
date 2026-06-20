@@ -367,24 +367,16 @@ impl Cpu {
         // Set LR
         // For ARM: LR = PC + 4 (already in pipeline state)
         // For THUMB: LR = PC
-        // For ARM: LR = PC - 4 (so SUBS PC, LR, #4 returns to next instruction)
-        // For THUMB: LR = PC + 4 (so SUBS PC, LR, #4 returns to next instruction)
-        // PC in THUMB = current_instruction + 4 (pipeline)
-        // PC in ARM = current_instruction + 8 (pipeline)
-        // ret_addr = self.r[15] which is current instruction address (before pipeline adjustment)
-        // For THUMB: LR should be current + 8, ret_addr = current, so LR = ret_addr + 8
-        // For ARM: LR should be current + 4, ret_addr = current, so LR = ret_addr + 4
-        // For THUMB IRQ: LR = current + 4 so return (SUBS PC, LR, #4) = current (re-execute)
-        // For ARM IRQ: LR = current + 4 so return = current (re-execute)
-        // On ARM, current = instruction address, PC pipeline = current + 8
-        // ARM manual: LR = PC + 4 = current + 8 + 4 = current + 12, return = current + 8 (next)
-        // But GBA BIOS uses SUBS PC, LR, #4, so we need return = current (re-execute)
-        // This means LR = current + 4
-        if thumb {
-            self.r[14] = ret_addr.wrapping_add(4);
-        } else {
-            self.r[14] = ret_addr.wrapping_add(4);
-        }
+        // r[15] is the instruction address (not pipeline PC).
+        // Pipeline PC = r[15] + 8 (ARM) or r[15] + 4 (THUMB).
+        // For exceptions: LR = address_of_next_instruction + 4
+        //   ARM:  next = r[15] + 4, LR = next + 4 = r[15] + 8
+        //   THUMB: next = r[15] + 2, LR = next + 4 = r[15] + 6
+        // Return via SUBS PC, LR, #4:
+        //   ARM:  r[15] + 8 - 4 = r[15] + 4 = next instruction ✓
+        //   THUMB: r[15] + 6 - 4 = r[15] + 2 = next instruction ✓
+        let pipeline_offset: u32 = if thumb { 4 } else { 8 };
+        self.r[14] = ret_addr.wrapping_add(pipeline_offset);
 
         // Switch to ARM mode
         self.cpsr &= !FLAG_T;

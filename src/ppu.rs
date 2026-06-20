@@ -498,6 +498,8 @@ impl Ppu {
             }
             4 => {
                 // Mode 4: 240x160, 8-bit indexed, 2 pages
+                // Page select comes from DISPCNT bit 4, not BG2CNT
+                let page = (self.snap_dispcnt >> 4) & 0x1;
                 let base = 0x0600_0000 + (page as u32) * 0xA000;
                 let line_offset = (line as u32) * 240;
                 for x in 0..SCREEN_W {

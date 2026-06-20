@@ -261,8 +261,6 @@ impl Emulator {
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
         let mut halt_count: u64 = 0;
-        let frame_num = self.frame_count;
-        let _ = frame_num;
 
         while self.cycle_count < target_cycles && instr_count < 2_000_000 {
             self.check_and_handle_interrupts();
@@ -412,20 +410,7 @@ impl Emulator {
 
         // Read instruction at PC
         let pc = self.cpu.r[15];
-        let old_r4 = self.cpu.r[4];
 
-        // Detect invalid PC
-        #[cfg(feature = "std")]
-        if !self.bad_pc_warned && !(pc < 0x04000 || (pc >= 0x02000000 && pc < 0x04000000) || (pc >= 0x08000000 && pc < 0x0E000000)) {
-            eprintln!("BAD PC: {:08X} cpsr={:08X} r14={:08X} frame={}", 
-                pc, self.cpu.cpsr, self.cpu.r[14], self.frame_count);
-            eprintln!("  last: pc={:08X} instr={:08X}", self.last_pc, self.last_instr);
-            eprintln!("  prev: pc={:08X} instr={:08X}", self.prev_pc, self.prev_instr);
-            for i in 0..16 {
-                eprintln!("  r{}={:08X}", i, self.cpu.r[i]);
-            }
-            self.bad_pc_warned = true;
-        }
         // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
         // This happens because our BIOS stub doesn't implement all functions
         if pc < 0x4000 {
@@ -482,13 +467,6 @@ impl Emulator {
         if self.mem.haltcnt & 0x80 != 0 {
             self.cpu.halted = true;
             self.mem.haltcnt = 0; // Clear to prevent re-triggering
-        }
-
-        // Trace R4 changes
-        #[cfg(feature = "std")]
-        if self.cpu.r[4] != old_r4 && self.frame_count >= 3 && self.frame_count <= 4 && !self.bad_pc_warned {
-            eprintln!("R4 change: {:08X} -> {:08X} at PC={:08X} frame={}",
-                old_r4, self.cpu.r[4], pc, self.frame_count);
         }
 
         // Sync cycles

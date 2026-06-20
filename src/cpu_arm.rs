@@ -504,13 +504,34 @@ impl Cpu {
         }
 
         // Write result
+        let old_mode_check = self.get_mode();
         if rd == 15 {
-            self.r[15] = result & !1;
-            if result & 1 != 0 {
-                self.cpsr |= FLAG_T;
-                self.r[15] &= !1;
+            // For S-flag operations that restore CPSR from SPSR (exception return),
+            // we must restore CPSR BEFORE setting PC alignment, because the THUMB
+            // bit comes from SPSR, not from the result's bit 0.
+            let need_spsr_restore = s && (old_mode_check != MODE_USR && old_mode_check != MODE_SYS);
+            if need_spsr_restore {
+                // Restore CPSR from SPSR first
+                self.cpsr = self.get_spsr();
+                let new_mode = self.get_mode();
+                if new_mode != old_mode_check {
+                    self.switch_mode_from(old_mode_check, new_mode);
+                }
+                // Now set PC based on restored THUMB bit
+                if self.is_thumb() {
+                    self.r[15] = result & !1;
+                } else {
+                    self.r[15] = result & !3;
+                }
             } else {
-                self.r[15] &= !3;
+                // Normal write to PC: use result's bit 0 for THUMB detection
+                self.r[15] = result & !1;
+                if result & 1 != 0 {
+                    self.cpsr |= FLAG_T;
+                } else {
+                    self.cpsr &= !FLAG_T;
+                    self.r[15] &= !3;
+                }
             }
             self.cycles += 3;
         } else {
@@ -526,32 +547,15 @@ impl Cpu {
 
         // Set flags for logical ops
         if s && !arith {
-            if rd == 15 {
-                let old_mode = self.get_mode();
-                if old_mode != MODE_USR && old_mode != MODE_SYS {
-                    self.cpsr = self.get_spsr();
-                    let new_mode = self.get_mode();
-                    if new_mode != old_mode {
-                        self.switch_mode_from(old_mode, new_mode);
-                    }
-                }
-            } else {
+            if rd != 15 {
                 self.set_nz(result);
                 self.set_flag(FLAG_C, shift_carry);
             }
+            // rd == 15 case already handled above (SPSR restore in write result)
         }
 
-        // For arithmetic ops, S flag already handled
-        if s && arith && rd == 15 {
-            let old_mode = self.get_mode();
-            if old_mode != MODE_USR && old_mode != MODE_SYS {
-                self.cpsr = self.get_spsr();
-                let new_mode = self.get_mode();
-                if new_mode != old_mode {
-                    self.switch_mode_from(old_mode, new_mode);
-                }
-            }
-        }
+        // For arithmetic ops, S flag already handled for rd == 15 above
+        // Just set flags for non-PC arithmetic (already done in match)
     }
 
     // Barrel shifter that returns (result, carry)
