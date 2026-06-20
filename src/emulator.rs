@@ -168,19 +168,23 @@ impl Emulator {
 
     pub fn run_frame(&mut self) {
         // Run CPU for one frame's worth of cycles
-        let target_cycles = self.cycle_count + CYCLES_PER_FRAME;
+        let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
+        let mut instr_count: u64 = 0;
+        let start_cc = self.cycle_count;
 
-        while self.cycle_count < target_cycles {
+        while self.cycle_count < target_cycles && instr_count < 2_000_000 {
             // Check for interrupts
             self.check_and_handle_interrupts();
 
             // Execute one instruction
             if self.cpu.halted {
                 // CPU is halted (HALTCNT), just advance cycles
-                self.cycle_count += 1;
+                self.cycle_count = self.cycle_count.wrapping_add(1);
                 self.advance_hardware(1);
+                instr_count += 1;
             } else {
                 self.execute_one();
+                instr_count += 1;
             }
         }
 
