@@ -716,12 +716,18 @@ impl Apu {
         let fifo_a_timer = self.soundcnt_h & 0x400 != 0;
         let fifo_b_timer = self.soundcnt_h & 0x4000 != 0;
 
-        // Timer 0 or 1 can be selected
+        // Timer 0 or 1 can be selected for each FIFO
         if timer_id == 0 && !fifo_a_timer {
             self.fifo_a_pop();
         }
         if timer_id == 1 && fifo_a_timer {
             self.fifo_a_pop();
+        }
+        if timer_id == 0 && !fifo_b_timer {
+            self.fifo_b_pop();
+        }
+        if timer_id == 1 && fifo_b_timer {
+            self.fifo_b_pop();
         }
     }
 

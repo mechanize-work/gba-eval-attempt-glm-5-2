@@ -6,6 +6,7 @@ pub struct Timer {
     pub data: [u16; 4],   // Reload values
     pub counter: [u32; 4], // Current counter
     pub overflow_at: [u64; 4], // Cycle when timer overflows (for cascade timing)
+    pub overflowed: [bool; 4], // Set when timer overflowed this run
 }
 
 impl Timer {
@@ -15,6 +16,7 @@ impl Timer {
             data: [0; 4],
             counter: [0; 4],
             overflow_at: [0; 4],
+            overflowed: [false; 4],
         }
     }
 
@@ -23,6 +25,7 @@ impl Timer {
         self.data = [0; 4];
         self.counter = [0; 4];
         self.overflow_at = [0; 4];
+        self.overflowed = [false; 4];
     }
 
     // Prescaler values
@@ -59,6 +62,7 @@ impl Timer {
                 // Reload from data value, preserving remainder
                 let reload = self.data[i] as u32;
                 self.counter[i] = reload + (self.counter[i] & 0xFFFF);
+                self.overflowed[i] = true;
 
                 // Reload
                 let _reload = self.data[i] as u32;

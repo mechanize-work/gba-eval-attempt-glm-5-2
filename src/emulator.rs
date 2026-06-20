@@ -479,6 +479,14 @@ impl Emulator {
         }
         self.timer.run(cycles, &mut self.irq);
 
+        // Handle timer overflows for FIFO audio
+        for i in 0..4 {
+            if self.timer.overflowed[i] {
+                self.timer.overflowed[i] = false;
+                self.apu.timer_fifo_event(i);
+            }
+        }
+
         // Sync timer counters back to IO memory
         for i in 0..4 {
             let counter = self.timer.read_counter(i);
