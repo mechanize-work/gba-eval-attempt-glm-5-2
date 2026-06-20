@@ -441,10 +441,11 @@ impl Emulator {
         let just_halted_viw = !was_halted && self.cpu.halted && self.cpu.vblank_intr_wait;
         self.advance_hardware(cycles);
 
-        // Don't clear vblank_occurred here - it might be a legitimate new VBlank
-        // that happened during advance_hardware. The clearing above is sufficient
-        // for VBlank that occurred before VBlankIntrWait was called.
-        let _ = just_halted_viw;
+        // For strict VBlankIntrWait, clear vblank_occurred after advance_hardware
+        // to prevent waking on a VBlank that happened during the same instruction
+        if just_halted_viw {
+            self.vblank_occurred = false;
+        }
     }
 
     pub fn advance_hardware(&mut self, cycles: u32) {
