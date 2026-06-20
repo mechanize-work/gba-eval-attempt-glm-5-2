@@ -144,61 +144,65 @@ impl Emulator {
     }
 
     fn run_bios(&mut self) {
-        // Instead of executing the BIOS stub (which is incomplete),
-        // set up the post-boot state directly to match the real GBA BIOS.
+        // Execute the BIOS stub from the reset vector.
+        // The BIOS sets up stacks, clears memory, copies interrupt handler,
+        // and jumps to the ROM at 0x08000000.
         
-        // The real GBA BIOS does:
-        // 1. Set up stack pointers (SVC, IRQ, SYS)
-        // 2. Clear IWRAM (using CpuFastSet internally)  
-        // 3. Copy interrupt handler to IWRAM 0x03000000
-        // 4. Set up IRQ handler pointer at 0x03007FFC
-        // 5. Set POSTFLG = 1
-        // 6. Set DISPCNT = 0x0080 (forced blank)
-        // 7. Jump to ROM at 0x08000000
-
-        // Clear IWRAM and EWRAM (real BIOS does this with CpuFastSet)
-        for b in self.mem.iwram.iter_mut() { *b = 0; }
-        for b in self.mem.ewram.iter_mut() { *b = 0; }
-
-        // Copy BIOS interrupt vectors to IWRAM
-        for i in 0..0x40 {
-            self.mem.iwram[i] = self.mem.bios[i];
+        // The BIOS stub at 0x0000 has a branch to 0x1258 (boot code).
+        // The boot code uses MSR to switch modes and set up SP.
+        // It takes ~768000 cycles (matching the oracle's BIOS time).
+        
+        // Set up CPU at reset vector
+        self.cpu.cpsr = MODE_SVC | FLAG_I | FLAG_F;
+        self.cpu.r[15] = 0x00000000; // PC = reset vector
+        
+        // Execute BIOS for up to 100000 instructions
+        // (should reach ROM entry long before this)
+        for _ in 0..100000 {
+            let pc = self.cpu.r[15];
+            
+            // Check if we've reached the ROM
+            if pc >= 0x08000000 {
+                break;
+            }
+            
+            // Check for empty BIOS (all zeros = undefined)
+            if pc < 0x4000 {
+                let instr = if self.cpu.is_thumb() {
+                    self.mem.read_half(pc) as u32
+                } else {
+                    self.mem.read_word(pc)
+                };
+                if instr == 0 {
+                    // Empty BIOS function - skip
+                    self.cpu.r[15] = self.cpu.r[15].wrapping_add(if self.cpu.is_thumb() { 2 } else { 4 });
+                    continue;
+                }
+            }
+            
+            // Execute instruction
+            if self.cpu.is_thumb() {
+                let instr = self.mem.read_half(pc);
+                self.cpu.execute_thumb(&mut self.mem, instr);
+            } else {
+                let instr = self.mem.read_word(pc);
+                self.cpu.execute_arm(&mut self.mem, instr);
+            }
+            
+            // Advance hardware
+            let cycles = self.cpu.cycles as u32;
+            self.cpu.cycles = 0;
+            self.advance_hardware(cycles);
         }
-
-        // Set up default IRQ handler at 0x03007FFC
-        // Points to the BIOS IRQ handler
-        let irq_handler = 0x00000128u32; // BIOS IRQ handler address
-        self.mem.iwram[0x7FFC] = (irq_handler & 0xFF) as u8;
-        self.mem.iwram[0x7FFD] = ((irq_handler >> 8) & 0xFF) as u8;
-        self.mem.iwram[0x7FFE] = ((irq_handler >> 16) & 0xFF) as u8;
-        self.mem.iwram[0x7FFF] = ((irq_handler >> 24) & 0xFF) as u8;
-
+        
+        // Ensure post-boot state is correct
         // Set POSTFLG = 1
         self.mem.io[0x300] = 0x01;
-
-        // Clear IE, IF, IME (BIOS initializes these to 0)
-        self.mem.io[0x200] = 0; self.mem.io[0x201] = 0; // IE
-        self.mem.io[0x202] = 0; self.mem.io[0x203] = 0; // IF
-        self.mem.io[0x208] = 0; self.mem.io[0x209] = 0; // IME
-        self.irq.ie = 0;
-        self.irq.if_ = 0;
-        self.irq.ime = 0;
-
-        // Set up CPU state for ROM entry
-        // BIOS exits in SYS mode (0x1F) with IRQ/FIQ enabled
-        self.cpu.cpsr = MODE_SYS;
-        self.cpu.r[0] = 0;
-        self.cpu.r[1] = 0;
-        self.cpu.r[2] = 0;
-        self.cpu.r[3] = 0;
-        self.cpu.r[12] = 0;
-        self.cpu.r[13] = 0x03007F00; // SYS SP
-        self.cpu.r[14] = 0x08000000; // LR
-        self.cpu.r[15] = 0x08000000; // PC -> ROM entry
-        self.cpu.usr_r13 = 0x03007F00;
-        self.cpu.usr_r14 = 0x08000000;
-        self.cpu.svc_r13 = 0x03007FE0;
-        self.cpu.irq_r13 = 0x03007FA0;
+        
+        // Clear IE, IF, IME if not already
+        if self.irq.ie == 0 { self.mem.io[0x200] = 0; self.mem.io[0x201] = 0; }
+        if self.irq.if_ == 0 { self.mem.io[0x202] = 0; self.mem.io[0x203] = 0; }
+        if self.irq.ime == 0 { self.mem.io[0x208] = 0; self.mem.io[0x209] = 0; }
     }
 
     pub fn load_rom(&mut self, len: usize) -> i32 {
