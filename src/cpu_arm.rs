@@ -225,7 +225,9 @@ impl Cpu {
         };
         self.r[rd] = result as u32;
         self.r[15] = self.r[15].wrapping_add(4);
-        self.cycles += 1;
+        // QADD/QSUB/QDADD/QDSUB trigger undefined exception on ARM7TDMI,
+        // which the BIOS handles in software. Add exception overhead.
+        self.cycles += 10;
     }
 
     fn exec_arm_mul_extra(&mut self, _mem: &mut Memory, instr: u32) {
