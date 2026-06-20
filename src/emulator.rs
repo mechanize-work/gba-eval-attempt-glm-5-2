@@ -264,13 +264,6 @@ impl Emulator {
 
         // Debug
         let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-        #[cfg(feature = "std")]
-        if self.frame_count < 10 || (self.frame_count % 10 == 0) {
-            let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
-            let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
-            eprintln!("Frame {}: dispcnt={:04X} instrs={} halted={} pal={} vram={}",
-                self.frame_count, dispcnt, instr_count, self.cpu.halted, pal_nonzero, vram_nonzero);
-        }
 
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
