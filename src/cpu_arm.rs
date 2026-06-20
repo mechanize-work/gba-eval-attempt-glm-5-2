@@ -1067,9 +1067,39 @@ impl Cpu {
                 // R0 = mask: bit 0=EWRAM, 1=IWRAM, 2=palette, 3=VRAM, 4=OAM
                 // bit 5=IO registers (except DISPCNT etc), 6=sound registers
                 // bit 7=other registers
-                // For simplicity, just advance PC
+                let mask = self.r[0];
+                if mask & 0x01 != 0 {
+                    // Clear EWRAM
+                    for b in mem.ewram.iter_mut() { *b = 0; }
+                }
+                if mask & 0x02 != 0 {
+                    // Clear IWRAM
+                    for b in mem.iwram.iter_mut() { *b = 0; }
+                }
+                if mask & 0x04 != 0 {
+                    // Clear palette
+                    for b in mem.palette.iter_mut() { *b = 0; }
+                }
+                if mask & 0x08 != 0 {
+                    // Clear VRAM
+                    for b in mem.vram.iter_mut() { *b = 0; }
+                }
+                if mask & 0x10 != 0 {
+                    // Clear OAM
+                    for b in mem.oam.iter_mut() { *b = 0; }
+                }
+                if mask & 0x20 != 0 {
+                    // Reset IO registers (except DISPCNT, POSTFLG, etc)
+                    // Keep DISPCNT, VCOUNT, POSTFLG
+                    let dispcnt = (mem.io[0x00] as u16) | ((mem.io[0x01] as u16) << 8);
+                    let postflg = mem.io[0x300];
+                    for b in mem.io.iter_mut() { *b = 0; }
+                    mem.io[0x00] = (dispcnt & 0xFF) as u8;
+                    mem.io[0x01] = ((dispcnt >> 8) & 0xFF) as u8;
+                    mem.io[0x300] = postflg;
+                }
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
-                self.cycles += 1;
+                self.cycles += 100; // Approximate
             }
             0x02 => {
                 // Halt - halt CPU until interrupt

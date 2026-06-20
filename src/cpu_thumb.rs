@@ -466,7 +466,7 @@ impl Cpu {
             _ => {}
         }
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 2;
+        self.cycles += 3;
     }
 
     fn exec_thumb_signed_transfer(&mut self, instr: u16, mem: &mut Memory) {
@@ -489,7 +489,7 @@ impl Cpu {
             _ => {}
         }
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 2;
+        self.cycles += 3;
     }
 
     fn exec_thumb_imm_offset(&mut self, instr: u16, mem: &mut Memory) {
@@ -524,7 +524,7 @@ impl Cpu {
             }
         }
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 2;
+        self.cycles += 3;
     }
 
     fn exec_thumb_halfword_imm_offset(&mut self, instr: u16, mem: &mut Memory) {
@@ -542,7 +542,7 @@ impl Cpu {
             mem.write_half(addr, self.r[rd] as u16);
         }
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 2;
+        self.cycles += 3;
     }
 
     fn exec_thumb_sp_rel(&mut self, instr: u16, mem: &mut Memory) {
@@ -557,7 +557,7 @@ impl Cpu {
             mem.write_word(addr, self.r[rd]);
         }
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 2;
+        self.cycles += 3;
     }
 
     fn exec_thumb_load_address(&mut self, instr: u16) {

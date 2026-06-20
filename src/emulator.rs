@@ -169,22 +169,6 @@ impl Emulator {
         self.mem.iwram[0x7FFE] = ((irq_handler >> 16) & 0xFF) as u8;
         self.mem.iwram[0x7FFF] = ((irq_handler >> 24) & 0xFF) as u8;
 
-        // Initialize BIOS IF shadow at 0x03007FF8 (used by BIOS IRQ handler)
-        // This should be 0xFFFF so that AND with IF preserves the IF bits
-        self.mem.iwram[0x7FF8] = 0xFF;
-        self.mem.iwram[0x7FF9] = 0xFF;
-
-        // Patch BIOS IRQ handler: change AND R2,R2,R1 at 0x013C to ORR R2,R2,R1
-        // Original: 0xE1822001 (AND R2, R2, R1, LSL R0)
-        // Patched:  0xE3822001 (ORR R2, R2, R1, LSL R0)  
-        // This ensures bios_if accumulates IF bits instead of being masked
-        // Actually, let's change it to MOV R2, R1 to just pass IF directly
-        // MOV R2, R1: 0xE1A02001
-        self.mem.bios[0x13C] = 0x01;
-        self.mem.bios[0x13D] = 0x20;
-        self.mem.bios[0x13E] = 0xA0;
-        self.mem.bios[0x13F] = 0xE1;
-
         // Set POSTFLG = 1
         self.mem.io[0x300] = 0x01;
 
@@ -268,13 +252,6 @@ impl Emulator {
         }
 
         self.cycle_count = self.cycle_count.wrapping_sub(CYCLES_PER_FRAME);
-
-        // Debug
-        let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-        if self.frame_count < 10 || dispcnt != 0x0080 {
-            eprintln!("Frame {}: dispcnt={:04X} instrs={} pc={:08X}",
-                self.frame_count, dispcnt, instr_count, self.cpu.r[15]);
-        }
 
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
@@ -387,18 +364,6 @@ impl Emulator {
 
         // Read instruction at PC
         let pc = self.cpu.r[15];
-
-        // Track IWRAM handler clearing
-        if self.frame_count == 4 && !self.iwram_clear_warned {
-            let v = self.mem.read_word(0x03000894);
-            if v == 0 {
-                eprintln!("IWRAM handler cleared! PC={:08X} cpsr={:08X}", pc, self.cpu.cpsr);
-                for i in 0..16 {
-                    eprintln!("  r{}={:08X}", i, self.cpu.r[i]);
-                }
-                self.iwram_clear_warned = true;
-            }
-        }
 
         // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
         // This happens because our BIOS stub doesn't implement all functions
