@@ -388,6 +388,22 @@ impl Memory {
     #[inline]
     fn io_write_half(&mut self, addr: u32, val: u16) {
         let a = ((addr - IO_BASE) as usize) & (IO_SIZE - 1);
+        // Special handling for IF register (write-to-clear)
+        if a == 0x202 {
+            // Writing 1 to a bit clears it
+            let current = (self.io[a] as u16) | ((self.io[a + 1] as u16) << 8);
+            let new_val = current & !val;
+            self.io[a] = (new_val & 0xFF) as u8;
+            self.io[a + 1] = ((new_val >> 8) & 0xFF) as u8;
+            return;
+        }
+        // HALTCNT (0x301): bit 7 = halt, bit 15 = stop
+        if a == 0x300 {
+            self.io[a] = (val & 0xFF) as u8;
+            // Bit 7 of HALTCNT = halt CPU
+            // This is handled by the emulator
+            return;
+        }
         self.io[a] = (val & 0xFF) as u8;
         self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
     }

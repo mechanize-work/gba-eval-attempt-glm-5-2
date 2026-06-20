@@ -102,39 +102,57 @@ impl Emulator {
         self.current_scanline = 0;
         self.cycle_in_scanline = 0;
 
-        // Set up initial register values
-        // Post-boot state: these are set by BIOS, but since we have a stub,
-        // we need to set them up ourselves
-        // After BIOS execution, the ROM entry point at 0x08000000 should be called
-        // with r0=0, r1=0, r2=0, r3=0, r12=0, sp=0x03007F00, lr=0x08000000, pc=0x08000000
-        // and CPSR = SVC mode, IRQ disabled
-
-        // Actually, let the BIOS stub execute. The BIOS stub sets up exception vectors
-        // and then branches to the ROM entry point.
-        // The BIOS stub reset handler at 0x0000 sets up:
-        // - SVC stack
-        // - IRQ stack
-        // - System stack
-        // Then jumps to 0x08000000
-
-        // But we need to make sure ROM is mapped. Let's set PC=0 and let it run.
-        self.cpu.r[15] = 0x0000_0000;
-        self.cpu.cpsr = MODE_SVC | FLAG_I | FLAG_F;
-
-        // Run the BIOS stub to initialize
-        // The BIOS will set up stacks and jump to ROM at 0x08000000
+        // Set up post-boot state directly (bypassing BIOS stub execution)
         self.run_bios();
     }
 
     fn run_bios(&mut self) {
-        // Execute BIOS until PC reaches 0x08000000
-        let max_bios_cycles = 1_000_000;
-        for _ in 0..max_bios_cycles {
-            if self.cpu.r[15] >= 0x0800_0000 {
-                break;
-            }
-            self.execute_one();
+        // Instead of executing the BIOS stub (which is incomplete),
+        // set up the post-boot state directly to match the real GBA BIOS.
+        
+        // The real GBA BIOS does:
+        // 1. Set up stack pointers (SVC, IRQ, SYS)
+        // 2. Clear IWRAM (using CpuFastSet internally)  
+        // 3. Copy interrupt handler to IWRAM 0x03000000
+        // 4. Set up IRQ handler pointer at 0x03007FFC
+        // 5. Set POSTFLG = 1
+        // 6. Set DISPCNT = 0x0080 (forced blank)
+        // 7. Jump to ROM at 0x08000000
+
+        // Clear IWRAM (real BIOS does this with CpuFastSet)
+        for b in self.mem.iwram.iter_mut() { *b = 0; }
+
+        // Copy BIOS interrupt vectors to IWRAM
+        for i in 0..0x40 {
+            self.mem.iwram[i] = self.mem.bios[i];
         }
+
+        // Set up default IRQ handler at 0x03007FFC
+        // Points to the BIOS IRQ handler
+        let irq_handler = 0x00000128u32; // BIOS IRQ handler address
+        self.mem.iwram[0x7FFC] = (irq_handler & 0xFF) as u8;
+        self.mem.iwram[0x7FFD] = ((irq_handler >> 8) & 0xFF) as u8;
+        self.mem.iwram[0x7FFE] = ((irq_handler >> 16) & 0xFF) as u8;
+        self.mem.iwram[0x7FFF] = ((irq_handler >> 24) & 0xFF) as u8;
+
+        // Set POSTFLG = 1
+        self.mem.io[0x300] = 0x01;
+
+        // Set up CPU state for ROM entry
+        self.cpu.cpsr = MODE_SVC | FLAG_I | FLAG_F;
+        self.cpu.r[0] = 0;
+        self.cpu.r[1] = 0;
+        self.cpu.r[2] = 0;
+        self.cpu.r[3] = 0;
+        self.cpu.r[12] = 0;
+        self.cpu.r[13] = 0x03007F00; // SVC SP
+        self.cpu.r[14] = 0x08000000; // LR
+        self.cpu.r[15] = 0x08000000; // PC -> ROM entry
+        self.cpu.svc_r13 = 0x03007F00;
+        self.cpu.irq_r13 = 0x03007FA0;
+        self.cpu.fiq_r13 = 0x03007F80;
+        self.cpu.abt_r13 = 0x03007F60;
+        self.cpu.und_r13 = 0x03007F40;
     }
 
     pub fn load_rom(&mut self, len: usize) -> i32 {
@@ -212,14 +230,19 @@ impl Emulator {
     }
 
     fn check_and_handle_interrupts(&mut self) {
-        // Read IE, IF, IME from IO
-        self.irq.ie = (self.mem.io[0x200] as u16) | ((self.mem.io[0x201] as u16) << 8);
+        // Sync IF from IO memory to irq struct
         self.irq.if_ = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
+        // Read IE, IME from IO
+        self.irq.ie = (self.mem.io[0x200] as u16) | ((self.mem.io[0x201] as u16) << 8);
         self.irq.ime = (self.mem.io[0x208] as u16) | ((self.mem.io[0x209] as u16) << 8);
 
         if self.irq.pending() {
+            // Wake up CPU if halted
             self.cpu.halted = false;
-            self.cpu.raise_irq();
+            // Only raise IRQ if not already in an interrupt
+            if !self.cpu.get_flag(FLAG_I) {
+                self.cpu.raise_irq();
+            }
         }
     }
 
@@ -248,11 +271,11 @@ impl Emulator {
         // Timer
         self.timer.run(cycles, &mut self.irq);
 
+        // Sync interrupt flags to IO memory
+        self.sync_interrupts();
+
         // DMA - check for immediate transfers
         self.dma.run(&mut self.mem, &mut self.irq);
-
-        // APU - clock FIFO timers etc
-        // (handled in generate_frame for now)
 
         // Update scanline/PPU timing
         self.cycle_in_scanline += cycles;
@@ -260,31 +283,59 @@ impl Emulator {
             self.cycle_in_scanline -= CYCLES_PER_SCANLINE;
             self.current_scanline = (self.current_scanline + 1) % TOTAL_LINES as u16;
 
-            // Update VCOUNT
+            // Update VCOUNT register
             self.mem.io[0x06] = (self.current_scanline & 0xFF) as u8;
             self.mem.io[0x07] = ((self.current_scanline >> 8) & 0xFF) as u8;
 
-            // Check VBlank
-            if self.current_scanline == VISIBLE_LINES as u16 {
-                self.irq.signal(IRQ_VBLANK);
-                // Trigger VBlank DMA
-                self.dma.trigger(1, &mut self.mem, &mut self.irq);
+            // Update DISPSTAT
+            let mut dispstat = (self.mem.io[0x04] as u16) | ((self.mem.io[0x05] as u16) << 8);
+            
+            // Clear HBlank and VBlank bits
+            dispstat &= !0x3; // Clear bits 0 and 1
+            
+            // Check VBlank (lines 160-227)
+            if self.current_scanline >= VISIBLE_LINES as u16 {
+                dispstat |= 0x2; // Set VBlank bit
+                
+                // Signal VBlank interrupt when entering VBlank (line 160)
+                if self.current_scanline == VISIBLE_LINES as u16 {
+                    self.irq.signal(IRQ_VBLANK);
+                    // Trigger VBlank DMA
+                    self.dma.trigger(1, &mut self.mem, &mut self.irq);
+                }
             }
-
-            // Check HBlank (start of HBlank = cycle 1006)
-            // For simplicity, signal at end of scanline
+            
+            // Check HBlank (occurs at cycle ~1006 of each scanline)
+            // We signal at the end of each scanline
             if self.current_scanline < VISIBLE_LINES as u16 {
+                dispstat |= 0x1; // Set HBlank bit
                 self.irq.signal(IRQ_HBLANK);
                 self.dma.trigger(2, &mut self.mem, &mut self.irq);
             }
-
+            
             // Check VCount match
-            let dispstat = (self.mem.io[0x04] as u16) | ((self.mem.io[0x05] as u16) << 8);
             let vcount_trigger = (dispstat >> 8) as u16;
             if self.current_scanline == vcount_trigger {
+                dispstat |= 0x4; // Set VCount match bit
                 self.irq.signal(IRQ_VCOUNT);
+            } else {
+                dispstat &= !0x4;
             }
+            
+            self.mem.io[0x04] = (dispstat & 0xFF) as u8;
+            self.mem.io[0x05] = ((dispstat >> 8) & 0xFF) as u8;
+            
+            // Sync interrupt flags to IO memory
+            self.sync_interrupts();
         }
+    }
+
+    /// Sync interrupt flags between the Interrupt struct and IO memory
+    fn sync_interrupts(&mut self) {
+        // Write IF to IO memory (IE and IME are read from IO memory)
+        let if_val = self.irq.if_;
+        self.mem.io[0x202] = (if_val & 0xFF) as u8;
+        self.mem.io[0x203] = ((if_val >> 8) & 0xFF) as u8;
     }
 
     pub fn framebuffer(&self) -> &[u32] {
