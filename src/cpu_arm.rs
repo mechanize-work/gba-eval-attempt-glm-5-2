@@ -1015,8 +1015,8 @@ impl Cpu {
             let rs = ((instr >> 8) & 0xF) as usize;
             let rm = (instr & 0xF) as usize;
 
-            if bit23 != 0 {
-                // Signed multiply
+            if bit22 != 0 {
+                // Signed multiply (SMULL/SMLAL: bit22=1)
                 let a = self.r[rm] as i32 as i64;
                 let b = self.r[rs] as i32 as i64;
                 let result = a.wrapping_mul(b);
