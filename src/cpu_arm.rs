@@ -666,7 +666,7 @@ impl Cpu {
                 self.cycles += 3;
             } else {
                 self.r[rd] = val;
-                self.cycles += 2;
+                self.cycles += 3;
             }
         } else {
             let val = if rd == 15 {
@@ -757,7 +757,7 @@ impl Cpu {
                 self.cycles += 3;
             } else {
                 self.r[rd] = val;
-                self.cycles += 2;
+                self.cycles += 3;
             }
         } else {
             // STRH
