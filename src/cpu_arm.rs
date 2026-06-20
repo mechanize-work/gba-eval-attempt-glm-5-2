@@ -773,7 +773,9 @@ impl Cpu {
             }
         }
 
-        self.r[15] = self.r[15].wrapping_add(4);
+        if !(is_load && rd == 15) {
+            self.r[15] = self.r[15].wrapping_add(4);
+        }
     }
 
     fn exec_arm_load_store_multiple(&mut self, mem: &mut Memory, instr: u32) {
@@ -926,7 +928,10 @@ impl Cpu {
             self.r[rn] = new_base;
         }
 
-        self.r[15] = self.r[15].wrapping_add(4);
+        // Only advance PC if we didn't load into PC
+        if !(is_load && (reg_list & 0x8000) != 0) {
+            self.r[15] = self.r[15].wrapping_add(4);
+        }
     }
 
     fn exec_arm_branch(&mut self, _mem: &mut Memory, instr: u32) {
