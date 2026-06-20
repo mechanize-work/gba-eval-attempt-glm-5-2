@@ -44,6 +44,8 @@ pub struct Emulator {
     pub cycle_count: u32,
     pub current_scanline: u16,
     pub cycle_in_scanline: u32,
+    pub vblank_waiting: bool,
+    pub vblank_occurred: bool,
 }
 
 impl Emulator {
@@ -66,6 +68,8 @@ impl Emulator {
             cycle_count: 0,
             current_scanline: 0,
             cycle_in_scanline: 0,
+            vblank_waiting: false,
+            vblank_occurred: false,
         }
     }
 
@@ -233,7 +237,7 @@ impl Emulator {
         self.irq.signal(IRQ_VBLANK);
     }
 
-    fn check_and_handle_interrupts(&mut self) {
+    pub fn check_and_handle_interrupts(&mut self) {
         // Sync IF from IO memory to irq struct
         self.irq.if_ = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
         // Read IE, IME from IO
@@ -241,23 +245,23 @@ impl Emulator {
         self.irq.ime = (self.mem.io[0x208] as u16) | ((self.mem.io[0x209] as u16) << 8);
 
         if self.irq.pending() {
-            // Wake up CPU if halted
             self.cpu.halted = false;
-            // Only raise IRQ if not already in an interrupt
             if !self.cpu.get_flag(FLAG_I) {
                 self.cpu.raise_irq();
             }
         } else if self.cpu.halted {
-            // CPU is halted but no interrupt pending.
-            // VBlankIntrWait (SWI 0x05) should wake up on VBlank even without IME/IE.
-            // Check if VBlank IF bit is set (bit 0 of IF)
-            if (self.irq.if_ & 1) != 0 {
+            // VBlankIntrWait: wake up when a NEW VBlank occurs
+            if self.vblank_occurred {
                 self.cpu.halted = false;
+                self.vblank_occurred = false;
             }
         }
+        
     }
 
-    fn execute_one(&mut self) {
+    pub fn execute_one(&mut self) {
+        let was_halted = self.cpu.halted;
+
         // Read instruction at PC
         let pc = self.cpu.r[15];
 
@@ -291,12 +295,16 @@ impl Emulator {
 
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
-            // Do NOT pre-increment PC here - the instruction handler does it
             self.cpu.execute_thumb(&mut self.mem, instr);
         } else {
             let instr = self.mem.read_word(pc);
-            // Do NOT pre-increment PC here - the instruction handler does it
             self.cpu.execute_arm(&mut self.mem, instr);
+        }
+
+        // If the CPU just became halted (VBlankIntrWait was called),
+        // clear vblank_occurred so we wait for a NEW VBlank
+        if !was_halted && self.cpu.halted {
+            self.vblank_occurred = false;
         }
 
         // Sync cycles
@@ -306,7 +314,7 @@ impl Emulator {
         self.advance_hardware(cycles);
     }
 
-    fn advance_hardware(&mut self, cycles: u32) {
+    pub fn advance_hardware(&mut self, cycles: u32) {
         // Timer
         self.timer.run(cycles, &mut self.irq);
 
@@ -330,32 +338,29 @@ impl Emulator {
             let mut dispstat = (self.mem.io[0x04] as u16) | ((self.mem.io[0x05] as u16) << 8);
             
             // Clear HBlank and VBlank bits
-            dispstat &= !0x3; // Clear bits 0 and 1
+            dispstat &= !0x3;
             
-            // Check VBlank (lines 160-227)
-            if self.current_scanline >= VISIBLE_LINES as u16 {
+            // VBlank occurs at line 160
+            if self.current_scanline == VISIBLE_LINES as u16 {
                 dispstat |= 0x2; // Set VBlank bit
-                
-                // Signal VBlank interrupt when entering VBlank (line 160)
-                if self.current_scanline == VISIBLE_LINES as u16 {
-                    self.irq.signal(IRQ_VBLANK);
-                    // Trigger VBlank DMA
-                    self.dma.trigger(1, &mut self.mem, &mut self.irq);
-                }
+                self.irq.signal(IRQ_VBLANK);
+                self.vblank_occurred = true;
+                self.dma.trigger(1, &mut self.mem, &mut self.irq);
+            } else if self.current_scanline > VISIBLE_LINES as u16 && self.current_scanline < TOTAL_LINES as u16 {
+                dispstat |= 0x2; // Still in VBlank
             }
             
-            // Check HBlank (occurs at cycle ~1006 of each scanline)
-            // We signal at the end of each scanline
+            // HBlank occurs at end of each visible scanline
             if self.current_scanline < VISIBLE_LINES as u16 {
                 dispstat |= 0x1; // Set HBlank bit
                 self.irq.signal(IRQ_HBLANK);
                 self.dma.trigger(2, &mut self.mem, &mut self.irq);
             }
             
-            // Check VCount match
+            // VCount match
             let vcount_trigger = (dispstat >> 8) as u16;
             if self.current_scanline == vcount_trigger {
-                dispstat |= 0x4; // Set VCount match bit
+                dispstat |= 0x4;
                 self.irq.signal(IRQ_VCOUNT);
             } else {
                 dispstat &= !0x4;
@@ -364,7 +369,6 @@ impl Emulator {
             self.mem.io[0x04] = (dispstat & 0xFF) as u8;
             self.mem.io[0x05] = ((dispstat >> 8) & 0xFF) as u8;
             
-            // Sync interrupt flags to IO memory
             self.sync_interrupts();
         }
     }

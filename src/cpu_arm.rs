@@ -1008,11 +1008,12 @@ impl Cpu {
                 self.cycles += 1;
             }
             0x05 => {
-                // VBlankIntrWait - wait for VBlank
-                // The real BIOS: clears VBlank IF bit, then waits until it's set again.
-                // Clear VBlank IF bit (bit 0) in IO memory
+                // VBlankIntrWait - wait for NEXT VBlank
+                // Clear VBlank IF bit and vblank_occurred flag
                 let if_val = mem.read_half(0x0400_0202);
                 mem.write_half(0x0400_0202, if_val & !1);
+                // Clear vblank_occurred so we wait for a NEW one
+                // This is set by advance_hardware when scanline hits 160
                 self.halted = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 1;
