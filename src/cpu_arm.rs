@@ -1008,9 +1008,11 @@ impl Cpu {
                 self.cycles += 1;
             }
             0x05 => {
-                // VBlankIntrWait - wait for VBlank interrupt
-                // The CPU halts until a VBlank interrupt is processed.
-                // We set a special halt flag that will be checked in the main loop.
+                // VBlankIntrWait - wait for VBlank
+                // The real BIOS: clears VBlank IF bit, then waits until it's set again.
+                // Clear VBlank IF bit (bit 0) in IO memory
+                let if_val = mem.read_half(0x0400_0202);
+                mem.write_half(0x0400_0202, if_val & !1);
                 self.halted = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 1;
@@ -1088,10 +1090,10 @@ impl Cpu {
                 self.cycles += count as u64 + 5;
             }
             0x0C => {
-                // CpuFastSet: fast copy from R0 to R1, R2 = count (in words, lower 22 bits)
-                // Always 32-bit, always 0x20 byte chunks
-                let src = self.r[0];
-                let dst = self.r[1];
+                // CpuFastSet: fast copy from R0 to R1, R2 = count (in words)
+                // Always 32-bit, copies in chunks of 8 words (32 bytes)
+                let src = self.r[0] & !3; // Word-align source
+                let dst = self.r[1] & !3; // Word-align dest
                 let mut count = self.r[2] & 0x0003_FFFF; // lower 22 bits
                 let mut s = src;
                 let mut d = dst;
