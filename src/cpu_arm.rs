@@ -20,11 +20,12 @@ impl Cpu {
             0x0 => {
                 // Bits 27-25 = 000: multiple instruction types
                 let bits27_20 = (instr >> 20) & 0xFF;
+                let bit24 = (instr >> 24) & 1;
                 
                 // Check for PSR transfer (MRS/MSR): bits 27-20 = 0001 0rS0
                 // MRS: 0001 0r00 (S=0), MSR: 0001 0r10 (S=1, bit21=1)
-                // Pattern: (bits27_20 & 0x0FB) == 0x010 (MRS) or 0x012 (MSR)
-                if (bits27_20 & 0x0FB) == 0x010 || (bits27_20 & 0x0FB) == 0x012 {
+                // Important: bit 24 must be 0 (bit 24=1 means BX/misc)
+                if bit24 == 0 && ((bits27_20 & 0x0FB) == 0x010 || (bits27_20 & 0x0FB) == 0x012) {
                     // PSR transfer (MRS or MSR)
                     self.exec_arm_psr_transfer(mem, instr);
                 } else if (instr & 0x0190_F000) == 0x0100_F000 {
