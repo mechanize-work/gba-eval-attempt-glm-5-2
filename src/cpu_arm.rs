@@ -1114,11 +1114,27 @@ impl Cpu {
 
         match swi_num {
             0x00 => {
-                // SoftReset - jump to ROM entry
-                // R0 selects: 0=clear EWRAM, 1=don't clear
-                // Just jump to 0x08000000
-                self.r[15] = 0x08000000;
-                self.cpsr &= !FLAG_T;
+                // SoftReset - BIOS clears IWRAM top, re-initializes stacks,
+                // then jumps to entry point based on [0x03007FFA]
+                let flag = mem.iwram[0x7FFA];
+                
+                // Clear top 512 bytes of IWRAM (0x03007E00-0x03007FFF)
+                for i in 0..512 {
+                    mem.iwram[0x7E00 + i] = 0;
+                }
+                
+                // Re-initialize stack pointers
+                self.irq_r13 = 0x03007FA0;
+                self.svc_r13 = 0x03007FE0;
+                self.usr_r13 = 0x03007F00;
+                
+                // Jump to entry point
+                if flag != 0 {
+                    self.r[15] = 0x02000000; // EWRAM
+                } else {
+                    self.r[15] = 0x08000000; // ROM
+                }
+                self.cpsr = MODE_SYS; // SYS mode, no I/F flags
                 self.cycles += 1;
             }
             0x01 => {
