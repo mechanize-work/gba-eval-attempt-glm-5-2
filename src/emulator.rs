@@ -388,13 +388,64 @@ impl Emulator {
     }
 
     pub fn advance_hardware(&mut self, cycles: u32) {
-        // Timer
+        // Timer - update from cached registers
+        for i in 0..4 {
+            self.timer.data[i] = self.mem.timer_data[i];
+            let new_cnt = self.mem.timer_cnt[i];
+            if new_cnt != self.timer.cnt[i] {
+                self.timer.write_cnt(i, new_cnt);
+            }
+        }
         self.timer.run(cycles, &mut self.irq);
 
         // Sync interrupt flags to IO memory
         self.sync_interrupts();
 
-        // DMA - check for immediate transfers
+        // DMA - check cached CNT registers for new enables
+        for i in 0..4 {
+            let cached_cnt = self.mem.dma_cnt[i];
+            let old_enabled = self.dma.cnt[i] & 0x80000000 != 0;
+            let new_enabled = cached_cnt & 0x80000000 != 0;
+            if new_enabled && !old_enabled {
+                // DMA just enabled - initialize transfer
+                let sad_off = 0xB0 + i * 0x0C;
+                let dad_off = 0xB4 + i * 0x0C;
+                self.dma.sad[i] = (self.mem.io[sad_off] as u32)
+                    | ((self.mem.io[sad_off+1] as u32) << 8)
+                    | ((self.mem.io[sad_off+2] as u32) << 16)
+                    | ((self.mem.io[sad_off+3] as u32) << 24);
+                self.dma.dad[i] = (self.mem.io[dad_off] as u32)
+                    | ((self.mem.io[dad_off+1] as u32) << 8)
+                    | ((self.mem.io[dad_off+2] as u32) << 16)
+                    | ((self.mem.io[dad_off+3] as u32) << 24);
+                self.dma.cnt[i] = cached_cnt;
+                self.dma.cur_src[i] = self.dma.sad[i];
+                self.dma.cur_dst[i] = self.dma.dad[i];
+                let count_mask = if i == 3 { 0xFFFFu32 } else { 0x3FFFu32 };
+                self.dma.cur_count[i] = cached_cnt & count_mask;
+                if self.dma.cur_count[i] == 0 {
+                    self.dma.cur_count[i] = count_mask + 1;
+                }
+                self.dma.enabled[i] = true;
+                // Execute immediate transfers (start mode 0)
+                let start_mode = (cached_cnt >> 12) & 0x3;
+                if start_mode == 0 {
+                    self.dma.do_transfer(i, &mut self.mem, &mut self.irq);
+                    // After transfer, clear enable bit if not repeat
+                    let repeat = cached_cnt & 0x0200 != 0;
+                    if !repeat {
+                        self.dma.enabled[i] = false;
+                        self.dma.cnt[i] &= !0x80000000;
+                        self.mem.dma_cnt[i] &= !0x80000000;
+                        let cnt_off = 0xB8 + i * 0x0C;
+                        self.mem.io[cnt_off + 2] &= !0x80; // Clear enable bit in IO
+                    }
+                }
+            }
+            // Update DMA CNT from cache
+            self.dma.cnt[i] = self.mem.dma_cnt[i];
+        }
+        // Also run any enabled DMA
         self.dma.run(&mut self.mem, &mut self.irq);
 
         // Update scanline/PPU timing

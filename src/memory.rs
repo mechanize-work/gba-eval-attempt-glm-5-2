@@ -184,6 +184,12 @@ impl Memory {
             rom,
             rom_size: 0,
             openbus: 0,
+            dma_cnt: [0; 4],
+            timer_cnt: [0; 4],
+            timer_data: [0; 4],
+            apu_regs: [0; 0x30],
+            soundbias: 0x200,
+            haltcnt: 0,
         }
     }
 
@@ -391,24 +397,52 @@ impl Memory {
     #[inline]
     fn io_write_half(&mut self, addr: u32, val: u16) {
         let a = ((addr - IO_BASE) as usize) & (IO_SIZE - 1);
-        // Special handling for IF register (write-to-clear)
         if a == 0x202 {
-            // Writing 1 to a bit clears it
             let current = (self.io[a] as u16) | ((self.io[a + 1] as u16) << 8);
             let new_val = current & !val;
             self.io[a] = (new_val & 0xFF) as u8;
             self.io[a + 1] = ((new_val >> 8) & 0xFF) as u8;
             return;
         }
-        // KEYINPUT (0x130) is read-only - ignore writes
-        if a == 0x130 || a == 0x131 {
-            return;
-        }
-        // HALTCNT (0x301): bit 7 = halt, bit 15 = stop
+        if a == 0x130 || a == 0x131 { return; }
         if a == 0x300 {
             self.io[a] = (val & 0xFF) as u8;
-            // Bit 7 of HALTCNT = halt CPU
-            // This is handled by the emulator
+            self.haltcnt = (val & 0xFF) as u8;
+            return;
+        }
+        // DMA registers: cache CNT for emulator
+        if a >= 0xB0 && a <= 0xDF {
+            self.io[a] = (val & 0xFF) as u8;
+            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            for ch in 0..4 {
+                let cnt_off = 0xB8 + ch * 0x0C;
+                if a == cnt_off {
+                    let hi = (self.io[cnt_off + 2] as u16) | ((self.io[cnt_off + 3] as u16) << 8);
+                    self.dma_cnt[ch] = (val as u32) | ((hi as u32) << 16);
+                } else if a == cnt_off + 2 {
+                    let lo = (self.io[cnt_off] as u16) | ((self.io[cnt_off + 1] as u16) << 8);
+                    self.dma_cnt[ch] = (lo as u32) | ((val as u32) << 16);
+                }
+            }
+
+            return;
+        }
+        // Timer registers
+        if a >= 0x100 && a <= 0x10F {
+            self.io[a] = (val & 0xFF) as u8;
+            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            let tm = (a - 0x100) / 4;
+            if a == 0x100 + tm * 4 { self.timer_data[tm] = val; }
+            if a == 0x102 + tm * 4 { self.timer_cnt[tm] = val; }
+            return;
+        }
+        // Sound registers
+        if a >= 0x60 && a <= 0x8F {
+            self.io[a] = (val & 0xFF) as u8;
+            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            let idx = (a - 0x60) / 2;
+            if idx < 0x18 { self.apu_regs[idx] = val; }
+            if a == 0x88 { self.soundbias = val; }
             return;
         }
         self.io[a] = (val & 0xFF) as u8;

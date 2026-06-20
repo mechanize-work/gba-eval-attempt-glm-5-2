@@ -108,7 +108,7 @@ impl Dma {
         any_active
     }
 
-    fn do_transfer(&mut self, i: usize, mem: &mut Memory, irq: &mut Interrupt) {
+    pub fn do_transfer(&mut self, i: usize, mem: &mut Memory, irq: &mut Interrupt) {
         let cnt = self.cnt[i];
         let is_32bit = cnt & 0x0400 != 0;
         let src_adj = (cnt >> 7) & 0x3;
