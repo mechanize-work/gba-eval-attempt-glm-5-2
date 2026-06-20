@@ -689,7 +689,10 @@ impl Cpu {
             }
         }
 
-        self.r[15] = self.r[15].wrapping_add(4);
+        // Only advance PC if we didn't load into PC (which already set PC)
+        if !(is_load && rd == 15) {
+            self.r[15] = self.r[15].wrapping_add(4);
+        }
     }
 
     fn exec_arm_halfword_transfer(&mut self, mem: &mut Memory, instr: u32) {

@@ -255,11 +255,6 @@ impl Emulator {
 
         // Debug
         let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-        if self.frame_count < 5 || dispcnt != 0x0080 {
-            #[cfg(feature = "std")]
-            eprintln!("Frame {}: dispcnt={:04X} instrs={} pc={:08X} halted={}",
-                self.frame_count, dispcnt, instr_count, self.cpu.r[15], self.cpu.halted);
-        }
 
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
