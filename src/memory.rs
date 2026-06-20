@@ -299,11 +299,15 @@ impl Memory {
             let h1 = self.io_read_half(addr.wrapping_add(2)) as u32;
             return h0 | (h1 << 16);
         }
-        let b0 = self.read_byte(addr) as u32;
-        let b1 = self.read_byte(addr.wrapping_add(1)) as u32;
-        let b2 = self.read_byte(addr.wrapping_add(2)) as u32;
-        let b3 = self.read_byte(addr.wrapping_add(3)) as u32;
-        b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+        // ARM unaligned access: read aligned word and rotate
+        let aligned = addr & !3;
+        let b0 = self.read_byte(aligned) as u32;
+        let b1 = self.read_byte(aligned.wrapping_add(1)) as u32;
+        let b2 = self.read_byte(aligned.wrapping_add(2)) as u32;
+        let b3 = self.read_byte(aligned.wrapping_add(3)) as u32;
+        let val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+        let rotate = (addr & 3) * 8;
+        val.rotate_right(rotate)
     }
 
     #[inline]
