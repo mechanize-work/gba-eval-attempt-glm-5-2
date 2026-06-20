@@ -1305,17 +1305,35 @@ impl Cpu {
             0x09 => {
                 // ArcTan: R0 = tan (16.16 fixed) -> R0 = angle (16.16 fixed)
                 let tan = self.r[0] as i32;
-                let angle = (tan as f64).atan() * 65536.0;
-                self.r[0] = angle as i32 as u32;
+                // Use integer approximation: atan(x) ≈ x/(1+0.28*x^2) for small x
+                // For 16.16 fixed point, use a lookup table approach
+                let tan_f = (tan as f64) / 65536.0;
+                let angle_f = {
+                    // Simple atan approximation
+                    let a = tan_f.abs();
+                    let s = a / (1.0 + 0.28 * a * a);
+                    if tan_f >= 0.0 { s } else { -s }
+                };
+                let angle = (angle_f * 65536.0) as i32;
+                self.r[0] = angle as u32;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 10;
             }
             0x0A => {
                 // ArcTan2: R0=y, R1=x (16.16 fixed) -> R0 = angle (16.16 fixed)
-                let y = self.r[0] as i32 as f64 / 65536.0;
-                let x = self.r[1] as i32 as f64 / 65536.0;
-                let angle = y.atan2(x) * 65536.0;
-                self.r[0] = angle as i32 as u32;
+                let y = (self.r[0] as i32) as f64 / 65536.0;
+                let x = (self.r[1] as i32) as f64 / 65536.0;
+                let angle = if x == 0.0 && y == 0.0 {
+                    0.0
+                } else if x == 0.0 {
+                    if y > 0.0 { 1.5707963 } else { -1.5707963 }
+                } else {
+                    let r = y / x;
+                    let a = r.abs() / (1.0 + 0.28 * r * r);
+                    let a = if r >= 0.0 { a } else { -a };
+                    if x > 0.0 { a } else { if y >= 0.0 { a + 3.14159265 } else { a - 3.14159265 } }
+                };
+                self.r[0] = ((angle * 65536.0) as i32) as u32;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 10;
             }
@@ -1340,9 +1358,9 @@ impl Cpu {
                     let theta = mem.read_half(s.wrapping_add(4)) as u16 as i32; // 0-65535 = 0-2pi
                     
                     // Convert theta to radians: theta / 65536 * 2 * PI
-                    let rad = (theta as f64 / 65536.0) * 2.0 * core::f64::consts::PI;
-                    let cos = rad.cos();
-                    let sin = rad.sin();
+                    let rad = (theta as f64 / 65536.0) * 2.0 * 3.14159265358979;
+                    let cos = approx_cos(rad);
+                    let sin = approx_sin(rad);
                     
                     // PA = sx * cos, PB = -sx * sin, PC = sy * sin, PD = sy * cos
                     // Values are 8.8 fixed point
@@ -1550,4 +1568,16 @@ impl Cpu {
             }
         }
     }
+}
+
+fn approx_cos(x: f64) -> f64 {
+    // Taylor series: cos(x) = 1 - x^2/2 + x^4/24 - x^6/720
+    let x2 = x * x;
+    1.0 - x2 / 2.0 + (x2 * x2) / 24.0 - (x2 * x2 * x2) / 720.0
+}
+
+fn approx_sin(x: f64) -> f64 {
+    // Taylor series: sin(x) = x - x^3/6 + x^5/120 - x^7/5040
+    let x2 = x * x;
+    x - (x * x2) / 6.0 + (x * x2 * x2) / 120.0 - (x * x2 * x2 * x2) / 5040.0
 }
