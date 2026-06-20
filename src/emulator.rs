@@ -429,24 +429,14 @@ impl Emulator {
 
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
-            self.trace[self.trace_idx] = (pc, instr as u32, self.cpu.cpsr);
-            self.spsr_trace[self.trace_idx] = self.cpu.get_spsr();
-            self.trace_idx = (self.trace_idx + 1) % 256;
-            self.prev_pc = self.last_pc;
-            self.prev_instr = self.last_instr;
-            self.last_pc = pc;
-            self.last_instr = instr as u32;
             self.cpu.execute_thumb(&mut self.mem, instr);
+            // Add instruction fetch cycles from ROM
+            self.cpu.cycles += Cpu::mem_wait_cfg(pc, self.mem.waitcnt, true);
         } else {
             let instr = self.mem.read_word(pc);
-            self.trace[self.trace_idx] = (pc, instr, self.cpu.cpsr);
-            self.spsr_trace[self.trace_idx] = self.cpu.get_spsr();
-            self.trace_idx = (self.trace_idx + 1) % 256;
-            self.prev_pc = self.last_pc;
-            self.prev_instr = self.last_instr;
-            self.last_pc = pc;
-            self.last_instr = instr;
             self.cpu.execute_arm(&mut self.mem, instr);
+            // Add instruction fetch cycles from ROM
+            self.cpu.cycles += Cpu::mem_wait_cfg(pc, self.mem.waitcnt, true);
         }
 
         // If the CPU just became halted (VBlankIntrWait was called),
