@@ -380,12 +380,6 @@ impl Memory {
     }
 
     #[inline]
-    fn io_write_byte(&mut self, addr: u32, val: u8) {
-        let a = ((addr - IO_BASE) as usize) & (IO_SIZE - 1);
-        self.io[a] = val;
-    }
-
-    #[inline]
     fn io_write_half(&mut self, addr: u32, val: u16) {
         let a = ((addr - IO_BASE) as usize) & (IO_SIZE - 1);
         // Special handling for IF register (write-to-clear)
@@ -397,6 +391,10 @@ impl Memory {
             self.io[a + 1] = ((new_val >> 8) & 0xFF) as u8;
             return;
         }
+        // KEYINPUT (0x130) is read-only - ignore writes
+        if a == 0x130 || a == 0x131 {
+            return;
+        }
         // HALTCNT (0x301): bit 7 = halt, bit 15 = stop
         if a == 0x300 {
             self.io[a] = (val & 0xFF) as u8;
@@ -406,6 +404,16 @@ impl Memory {
         }
         self.io[a] = (val & 0xFF) as u8;
         self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+    }
+
+    #[inline]
+    fn io_write_byte(&mut self, addr: u32, val: u8) {
+        let a = ((addr - IO_BASE) as usize) & (IO_SIZE - 1);
+        // KEYINPUT is read-only
+        if a == 0x130 || a == 0x131 {
+            return;
+        }
+        self.io[a] = val;
     }
 
     pub fn reset(&mut self) {

@@ -92,6 +92,9 @@ impl Emulator {
         // DISPCNT = 0x0080 (forced blank = white screen)
         self.mem.io[0x00] = 0x80;
         self.mem.io[0x01] = 0x00;
+        // KEYINPUT = all released (0x03FF, active-low)
+        self.mem.io[0x130] = 0xFF;
+        self.mem.io[0x131] = 0x03;
         // Palette[0] = white (0x7FFF)
         self.mem.palette[0] = 0xFF;
         self.mem.palette[1] = 0x7F;
