@@ -926,7 +926,7 @@ impl Ppu {
 
         let mut final_color = top_color;
 
-        if blend_mode != 0 && (win_blend_en || true) {
+        if blend_mode != 0 {
             // Check if this layer is a blend target
             let is_target1 = if top_is_obj {
                 bldcnt & 0x40 != 0
@@ -955,7 +955,7 @@ impl Ppu {
                             false
                         };
 
-                        if second_is_target || true {
+                        if second_is_target {
                             let eva = (bldalpha & 0x1F).min(16);
                             let evb = ((bldalpha >> 8) & 0x1F).min(16);
                             final_color = blend_alpha(top_color, second_color, eva, evb);
