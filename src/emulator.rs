@@ -315,8 +315,6 @@ impl Emulator {
                 self.irq_processing = true;
                 self.cpu.raise_irq();
             }
-            // Don't clear VBlank IF here - let the IRQ handler see it.
-            // The irq_processing cleanup will clear it after the handler returns.
         }
 
         if self.irq.pending() {
