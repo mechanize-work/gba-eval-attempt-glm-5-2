@@ -430,9 +430,6 @@ impl Emulator {
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
             self.cpu.execute_thumb(&mut self.mem, instr);
-// no THUMB fetch overhead
-            let fw = Cpu::mem_wait_cfg(pc, self.mem.waitcnt, true);
-            if fw > 0 { self.cpu.cycles += 1; } // Just add 1 for ROM, 0 for IWRAM
         } else {
             let instr = self.mem.read_word(pc);
             self.cpu.execute_arm(&mut self.mem, instr);
