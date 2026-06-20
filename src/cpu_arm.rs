@@ -1344,10 +1344,10 @@ impl Cpu {
 impl Cpu {
     fn lz77_decomp(mem: &mut Memory, src: u32, dst: u32, wide: bool) {
         let header = mem.read_word(src);
-        let total_size = header & 0x00FFFFFF;
-        let mut src_pos = src + 4;
+        let total_size = (header & 0x00FFFFFF) as usize;
+        let mut src_pos = src.wrapping_add(4);
         let mut dst_pos = dst;
-        let mut remaining = total_size as usize;
+        let mut remaining = total_size;
         
         while remaining > 0 {
             let flags = mem.read_byte(src_pos);
@@ -1358,24 +1358,34 @@ impl Cpu {
                 if flags & (0x80 >> i) != 0 {
                     // Compressed: 2 bytes = length + offset
                     let b1 = mem.read_byte(src_pos) as u16;
-                    let b2 = mem.read_byte(src_pos + 1) as u16;
+                    let b2 = mem.read_byte(src_pos.wrapping_add(1)) as u16;
                     src_pos = src_pos.wrapping_add(2);
                     let length = ((b1 >> 4) + 3) as usize;
-                    let offset = (((b1 & 0xF) << 8) | b2) as usize + 1;
+                    let offset = (((b1 & 0xF) << 8) | b2) as u32 + 1;
                     
-                    let back_pos = dst_pos.wrapping_sub(offset as u32);
-                    for _ in 0..length {
-                        let val = mem.read_byte(back_pos + (dst_pos.wrapping_sub(back_pos) - offset as u32) % offset as u32);
+                    let back_start = dst_pos.wrapping_sub(offset);
+                    for j in 0..length {
                         if remaining == 0 { break; }
+                        // Read from the back-reference position
+                        // For wide mode, back-ref reads from halfword addresses
+                        let back_addr = if wide {
+                            back_start.wrapping_add((j as u32).wrapping_mul(2))
+                        } else {
+                            back_start.wrapping_add(j as u32)
+                        };
+                        let val = if wide {
+                            mem.read_half(back_addr) as u8
+                        } else {
+                            mem.read_byte(back_addr)
+                        };
                         if wide {
                             mem.write_half(dst_pos, val as u16);
                             dst_pos = dst_pos.wrapping_add(2);
-                            remaining = remaining.saturating_sub(2);
                         } else {
                             mem.write_byte(dst_pos, val);
                             dst_pos = dst_pos.wrapping_add(1);
-                            remaining = remaining.saturating_sub(1);
                         }
+                        remaining -= 1;
                     }
                 } else {
                     // Uncompressed: 1 byte
@@ -1384,12 +1394,11 @@ impl Cpu {
                     if wide {
                         mem.write_half(dst_pos, val as u16);
                         dst_pos = dst_pos.wrapping_add(2);
-                        remaining = remaining.saturating_sub(2);
                     } else {
                         mem.write_byte(dst_pos, val);
                         dst_pos = dst_pos.wrapping_add(1);
-                        remaining = remaining.saturating_sub(1);
                     }
+                    remaining -= 1;
                 }
             }
         }
