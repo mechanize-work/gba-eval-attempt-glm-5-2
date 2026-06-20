@@ -299,10 +299,6 @@ impl Emulator {
             self.cpu.vblank_intr_wait = false;
             self.vblank_occurred = false;
             
-            // Increment VBlank counter (game-specific, but commonly at this address)
-            let counter = self.mem.read_word(0x0300_15E0);
-            self.mem.write_word(0x0300_15E0, counter.wrapping_add(1));
-            
             // Set VBlank IF bit so the IRQ handler can process it
             let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
             self.mem.io[0x202] = ((if_val | 1) & 0xFF) as u8;
