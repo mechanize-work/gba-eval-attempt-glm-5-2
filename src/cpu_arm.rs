@@ -230,11 +230,13 @@ impl Cpu {
 
     fn exec_arm_mul_extra(&mut self, _mem: &mut Memory, instr: u32) {
         // ARMv5TE extra multiply instructions
-        // Simplified: just advance PC
+        // SMLA: Rd = Rn + (Rm[15:0] * Rs[15:0])
+        // SMUL: Rd = Rm[15:0] * Rs[15:0]
+        // Register encoding: Rd=19:16, Rn=15:12, Rs=11:8, Rm=3:0
         let rd = ((instr >> 16) & 0xF) as usize;
-        let rs = ((instr >> 12) & 0xF) as usize;
-        let rm = ((instr >> 8) & 0xF) as usize;
-        let rn = (instr & 0xF) as usize;
+        let rn = ((instr >> 12) & 0xF) as usize;
+        let rs = ((instr >> 8) & 0xF) as usize;
+        let rm = (instr & 0xF) as usize;
 
         let m = self.r[rm] as i16 as i32;
         let s = self.r[rs] as i16 as i32;
