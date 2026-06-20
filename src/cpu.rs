@@ -72,6 +72,7 @@ pub struct Cpu {
     // System/user banked (none, uses r13/r14)
 
     pub halted: bool,
+    pub vblank_intr_wait: bool,
     pub cycles: u64,
 
     // Pipeline
@@ -111,6 +112,7 @@ impl Cpu {
             und_r14: 0,
             und_spsr: 0,
             halted: false,
+            vblank_intr_wait: false,
             cycles: 0,
             pipeline_fetch: 0,
             pipeline_decode: 0,

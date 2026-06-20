@@ -495,13 +495,15 @@ impl Cpu {
     fn exec_thumb_imm_offset(&mut self, instr: u16, mem: &mut Memory) {
         // THUMB.9: Load/store with immediate offset
         // bits 15-13 = 011, bits 12-11 = opcode: 0=STR word, 1=LDR word, 2=STRB, 3=LDRB
+        // bits 10-6 = offset5, bits 5-3 = Rn, bits 2-0 = Rd
         let opcode = (instr >> 11) & 0x3;
         let is_load = opcode & 1 != 0;
         let is_byte = opcode >= 2;
+        let offset5 = ((instr >> 6) & 0x1F) as u32;
         let offset_val = if is_byte {
-            (instr & 0x7FF) as u32  // byte offset
+            offset5  // byte offset
         } else {
-            ((instr & 0x7FF) as u32) << 2  // word offset (shifted by 2)
+            offset5 << 2  // word offset (shifted by 2)
         };
         let rb = ((instr >> 3) & 0x7) as usize;
         let rd = (instr & 0x7) as usize;
@@ -528,7 +530,7 @@ impl Cpu {
     fn exec_thumb_halfword_imm_offset(&mut self, instr: u16, mem: &mut Memory) {
         // THUMB.10: Load/store halfword with immediate offset
         let is_load = (instr >> 11) & 1 != 0;
-        let imm = ((instr & 0x7FF) as u32) << 1;
+        let imm = (((instr >> 6) & 0x1F) as u32) << 1;
         let rb = ((instr >> 3) & 0x7) as usize;
         let rd = (instr & 0x7) as usize;
 
