@@ -249,6 +249,7 @@ impl Cpu {
 
         let a = self.r[rd];
         let b = self.r[rs];
+        let mut extra_cycles: u64 = 0;
 
         match op {
             0x0 => { // AND
@@ -262,6 +263,7 @@ impl Cpu {
                 self.set_nz(result);
             }
             0x2 => { // LSL
+                extra_cycles = 1;
                 let amount = b & 0xFF;
                 let (result, carry) = if amount == 0 {
                     (a, self.get_flag(FLAG_C))
@@ -277,6 +279,7 @@ impl Cpu {
                 self.set_flag(FLAG_C, carry);
             }
             0x3 => { // LSR
+                extra_cycles = 1;
                 let amount = b & 0xFF;
                 let (result, carry) = if amount == 0 {
                     (a, self.get_flag(FLAG_C))
@@ -292,6 +295,7 @@ impl Cpu {
                 self.set_flag(FLAG_C, carry);
             }
             0x4 => { // ASR
+                extra_cycles = 1;
                 let amount = b & 0xFF;
                 let (result, carry) = if amount == 0 {
                     (a, self.get_flag(FLAG_C))
@@ -321,6 +325,7 @@ impl Cpu {
                 self.set_nzcv(result, carry, overflow);
             }
             0x7 => { // ROR
+                extra_cycles = 1;
                 let amount = b & 0xFF;
                 let (result, carry) = if amount == 0 {
                     (a, self.get_flag(FLAG_C))
@@ -359,6 +364,7 @@ impl Cpu {
                 self.set_nz(result);
             }
             0xD => { // MUL
+                extra_cycles = 1;
                 let result = a.wrapping_mul(b);
                 self.r[rd] = result;
                 self.set_nz(result);
@@ -376,7 +382,7 @@ impl Cpu {
             _ => {}
         }
         self.r[15] = self.r[15].wrapping_add(2);
-        self.cycles += 1;
+        self.cycles += 1 + extra_cycles;
     }
 
     fn exec_thumb_hi(&mut self, _mem: &mut Memory, instr: u16) {
