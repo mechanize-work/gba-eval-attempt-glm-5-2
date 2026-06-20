@@ -332,7 +332,10 @@ impl Emulator {
                 }
             }
         } else if self.cpu.halted {
-            if self.vblank_occurred {
+            // Regular HALT: wake on any pending interrupt
+            if self.irq.pending() {
+                self.cpu.halted = false;
+            } else if self.vblank_occurred {
                 self.cpu.halted = false;
                 self.vblank_occurred = false;
             }
