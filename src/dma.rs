@@ -181,11 +181,8 @@ impl Dma {
                 continue;
             }
             let sm = (self.cnt[i] >> 28) & 0x3;
-            eprintln!("DMA trigger({}): ch{} enabled, sm={}, start_mode={}", start_mode, i, sm, start_mode);
             if sm == start_mode {
-                eprintln!("DMA{}: TRIGGERED! SAD={:08X} DAD={:08X} count={}", i, self.cur_src[i], self.cur_dst[i], self.cur_count[i]);
                 self.do_transfer(i, mem, irq);
-                eprintln!("DMA{}: after trigger transfer, DAD[0]={:08X}", i, mem.read_word(self.cur_dst[i] & 0x0FFFFFFF));
             }
         }
     }

@@ -302,23 +302,19 @@ impl Cpu {
             };
 
             // Mask
-            let field_mask = match (instr >> 16) & 0xF {
-                0x1 => 0x0000_00FF,
-                0x2 => 0x0000_FF00,
-                0x4 => 0x00FF_0000,
-                0x8 => 0xFF00_0000,
-                0x3 => 0x0000_FFFF,
-                0x5 => 0x00FF_00FF,
-                0x9 => 0xFF00_00FF,
-                0x6 => 0x00FF_FF00,
-                0xA => 0xFFFF_0000,
-                0x7 => 0x00FF_FFFF,
-                0xB => 0xFFFF_00FF,
-                0xC => 0x00FF_FFFF,
-                0xD => 0xFF00_FFFF,
-                0xE => 0xFFFF_FF00,
-                0xF => 0xFFFF_FFFF,
-                _ => 0,
+            // Field mask per ARM spec:
+            // bit 19 (f) -> 0xF0000000 (NZCV flags)
+            // bit 18 (s) -> 0x0F000000 (status)
+            // bit 17 (x) -> 0x00FF0000 (extension)
+            // bit 16 (c) -> 0x0000FFFF (control)
+            let field = (instr >> 16) & 0xF;
+            let field_mask = {
+                let mut m = 0u32;
+                if field & 0x8 != 0 { m |= 0xF000_0000; } // f
+                if field & 0x4 != 0 { m |= 0x0F00_0000; } // s
+                if field & 0x2 != 0 { m |= 0x00FF_0000; } // x
+                if field & 0x1 != 0 { m |= 0x0000_FFFF; } // c
+                m
             };
 
             if instr & 0x0040_0000 != 0 {
@@ -329,11 +325,12 @@ impl Cpu {
                 // CPSR - control bits may change mode
                 let old_mode = self.get_mode();
                 let new_cpsr = (self.cpsr & !field_mask) | (val & field_mask);
-                self.cpsr = new_cpsr;
-                let new_mode = self.get_mode();
+                let new_mode = new_cpsr & 0x1F;
                 if new_mode != old_mode {
-                    self.switch_mode(new_mode);
+                    // Switch mode BEFORE updating CPSR so banking works
+                    self.switch_mode_from(old_mode, new_mode);
                 }
+                self.cpsr = new_cpsr;
                 // Check if we need to switch ARM/THUMB
                 // This is handled by the execution loop
             }

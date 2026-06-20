@@ -54,6 +54,9 @@ pub struct Emulator {
     pub last_instr: u32,
     pub prev_pc: u32,
     pub prev_instr: u32,
+    pub trace: [(u32, u32, u32); 256], // (pc, instr, cpsr)
+    pub trace_idx: usize,
+    pub spsr_trace: [u32; 256],
 }
 
 impl Emulator {
@@ -86,6 +89,9 @@ impl Emulator {
             last_instr: 0,
             prev_pc: 0,
             prev_instr: 0,
+            trace: [(0u32, 0u32, 0u32); 256],
+            trace_idx: 0,
+            spsr_trace: [0; 256],
         }
     }
 
@@ -249,12 +255,8 @@ impl Emulator {
         let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
         let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
         let bg0cnt = (self.mem.io[0x08] as u16) | ((self.mem.io[0x09] as u16) << 8);
-        eprintln!("Frame done: dispcnt={:04X} bg0cnt={:04X} pal_nonzero={} vram_nonzero={} instrs={} halted={} pc={:08X} cpsr={:08X}", dispcnt, bg0cnt, pal_nonzero, vram_nonzero, instr_count, halt_count, self.cpu.r[15], self.cpu.cpsr);
-        if pal_nonzero {
-            let p0 = self.mem.read_half(0x05000000);
-            let p1 = self.mem.read_half(0x05000002);
-            eprintln!("  palette[0]={:04X} palette[1]={:04X}", p0, p1);
-        }
+        eprintln!("Frame done: dispcnt={:04X} bg0cnt={:04X} pal_nonzero={} vram_nonzero={} instrs={} halted={} pc={:08X} cpsr={:08X}",
+            dispcnt, bg0cnt, pal_nonzero, vram_nonzero, instr_count, halt_count, self.cpu.r[15], self.cpu.cpsr);
         self.ppu.render_frame(&self.mem);
         self.frame_count += 1;
     }
@@ -366,23 +368,33 @@ impl Emulator {
         // Read instruction at PC
         let pc = self.cpu.r[15];
 
+        // Debug: track IRQ SP around the critical section
+        if (pc == 0x03000970 || pc == 0x03000974 || pc == 0x03000984 || pc == 0x030009AC || pc == 0x030009B0 || pc == 0x030009B4) && !self.bad_pc_warned {
+            eprintln!("DEBUG: pc={:08X} cpsr={:08X} r13={:08X} r14={:08X} r2={:08X} irq_r13={:08X} usr_r13={:08X} spsr={:08X}",
+                pc, self.cpu.cpsr, self.cpu.r[13], self.cpu.r[14], self.cpu.r[2], self.cpu.irq_r13, self.cpu.usr_r13, self.cpu.get_spsr());
+            if pc == 0x030009B0 {
+                // Dump what's on the stack before LDMFD
+                let sp = self.cpu.r[13];
+                for i in 0..6 {
+                    let v = self.mem.read_word(sp.wrapping_add(i * 4));
+                    eprintln!("  [SP+{:02X}] = {:08X}", i*4, v);
+                }
+            }
+        }
+
         // Debug: catch when PC goes to bad area
         if pc >= 0x0700_0000 && pc < 0x0800_0000 && !self.bad_pc_warned {
             eprintln!("BAD PC: {:08X} cpsr={:08X} r14={:08X}", pc, self.cpu.cpsr, self.cpu.r[14]);
-            eprintln!("  prev: pc={:08X} instr={:08X}", self.prev_pc, self.prev_instr);
-            eprintln!("  last: pc={:08X} instr={:08X}", self.last_pc, self.last_instr);
-            // Check IRQ handler address
-            let irq_vec = self.mem.read_word(0x03FF_FFFC);
-            eprintln!("  IRQ vector at 0x03FFFFFC: 0x{:08X}", irq_vec);
-            // Check what's at the bad PC
-            let instr_at = self.mem.read_word(pc & !3);
-            eprintln!("  instr at bad PC: 0x{:08X}", instr_at);
-            for i in 0..16 {
-                eprintln!("  r{}={:08X}", i, self.cpu.r[i]);
+            // Check IRQ stack
+            let irq_sp = self.cpu.irq_r13;
+            eprintln!("  IRQ SP={:08X}", irq_sp);
+            // Read what's on the IRQ stack
+            for i in 0..8 {
+                let v = self.mem.read_word(irq_sp.wrapping_add(i * 4));
+                eprintln!("  [SP+{:02X}] = {:08X}", i*4, v);
             }
             self.bad_pc_warned = true;
         }
-
         // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
         // This happens because our BIOS stub doesn't implement all functions
         if pc < 0x4000 {
@@ -413,6 +425,9 @@ impl Emulator {
 
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
+            self.trace[self.trace_idx] = (pc, instr as u32, self.cpu.cpsr);
+            self.spsr_trace[self.trace_idx] = self.cpu.get_spsr();
+            self.trace_idx = (self.trace_idx + 1) % 256;
             self.prev_pc = self.last_pc;
             self.prev_instr = self.last_instr;
             self.last_pc = pc;
@@ -420,6 +435,9 @@ impl Emulator {
             self.cpu.execute_thumb(&mut self.mem, instr);
         } else {
             let instr = self.mem.read_word(pc);
+            self.trace[self.trace_idx] = (pc, instr, self.cpu.cpsr);
+            self.spsr_trace[self.trace_idx] = self.cpu.get_spsr();
+            self.trace_idx = (self.trace_idx + 1) % 256;
             self.prev_pc = self.last_pc;
             self.prev_instr = self.last_instr;
             self.last_pc = pc;
@@ -459,10 +477,6 @@ impl Emulator {
             let cached_cnt = self.mem.dma_cnt[i];
             let old_enabled = self.dma.cnt[i] & 0x80000000 != 0;
             let new_enabled = cached_cnt & 0x80000000 != 0;
-            if new_enabled {
-                eprintln!("DMA{}: new_enabled={}, old_enabled={}, cached_cnt={:08X}, dma.cnt={:08X}",
-                    i, new_enabled, old_enabled, cached_cnt, self.dma.cnt[i]);
-            }
             if new_enabled && !old_enabled {                // DMA just enabled - initialize transfer
                 let sad_off = 0xB0 + i * 0x0C;
                 let dad_off = 0xB4 + i * 0x0C;
@@ -486,12 +500,7 @@ impl Emulator {
                 // Execute immediate transfers (start mode 0)
                 let start_mode = (cached_cnt >> 28) & 0x3;
                 if start_mode == 0 {
-                    eprintln!("DMA{}: SAD={:08X} DAD={:08X} CNT={:08X} count={}",
-                        i, self.dma.sad[i], self.dma.dad[i], cached_cnt, self.dma.cur_count[i]);
                     self.dma.do_transfer(i, &mut self.mem, &mut self.irq);
-                    // Verify transfer by reading back first word at DAD
-                    let check = self.mem.read_word(self.dma.dad[i]);
-                    eprintln!("DMA{}: after transfer, read back DAD[0]={:08X}, enabled={}", i, check, self.dma.enabled[i]);
                     // After transfer, clear enable bit if not repeat
                     let repeat = cached_cnt & 0x0200_0000 != 0;
                     if !repeat {
