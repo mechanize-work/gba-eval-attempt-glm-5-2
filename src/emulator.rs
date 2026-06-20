@@ -250,7 +250,6 @@ impl Emulator {
                 self.cpu.raise_irq();
             }
         } else if self.cpu.halted {
-            // VBlankIntrWait: wake up when a NEW VBlank occurs
             if self.vblank_occurred {
                 self.cpu.halted = false;
                 self.vblank_occurred = false;
