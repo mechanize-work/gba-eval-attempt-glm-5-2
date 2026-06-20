@@ -1363,11 +1363,11 @@ impl Cpu {
                     let length = ((b1 >> 4) + 3) as usize;
                     let offset = (((b1 & 0xF) << 8) | b2) as u32 + 1;
                     
-                    let back_start = dst_pos.wrapping_sub(offset);
+                    // Back-reference: offset is in output units (bytes or halfwords)
+                    let back_offset = if wide { offset.wrapping_mul(2) } else { offset };
+                    let back_start = dst_pos.wrapping_sub(back_offset);
                     for j in 0..length {
                         if remaining == 0 { break; }
-                        // Read from the back-reference position
-                        // For wide mode, back-ref reads from halfword addresses
                         let back_addr = if wide {
                             back_start.wrapping_add((j as u32).wrapping_mul(2))
                         } else {
