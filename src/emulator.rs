@@ -199,9 +199,6 @@ impl Emulator {
         self.cpu.usr_r14 = 0x08000000;
         self.cpu.svc_r13 = 0x03007FE0;
         self.cpu.irq_r13 = 0x03007FA0;
-        self.cpu.fiq_r13 = 0x03007F80;
-        self.cpu.abt_r13 = 0x03007F60;
-        self.cpu.und_r13 = 0x03007F40;
     }
 
     pub fn load_rom(&mut self, len: usize) -> i32 {
