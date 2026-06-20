@@ -242,6 +242,17 @@ impl Emulator {
     }
 
     pub fn run_frame(&mut self) {
+        // Frame 0: simulate BIOS execution (white screen, no CPU)
+        if self.frame_count == 0 {
+            // Advance hardware by 1 frame (VBlank, timers, audio)
+            self.advance_hardware(CYCLES_PER_FRAME);
+            self.cycle_count = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
+            // Render white (DISPCNT = 0x0080 force blank)
+            self.ppu.render_frame(&self.mem);
+            self.frame_count += 1;
+            return;
+        }
+
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
         let mut halt_count: u64 = 0;
