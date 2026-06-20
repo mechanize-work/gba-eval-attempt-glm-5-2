@@ -535,6 +535,8 @@ pub fn step_one() {
                 emu.advance_hardware(1);
             } else {
                 emu.execute_one();
+                // Check interrupts AFTER instruction (between instructions, like real hardware)
+                emu.check_and_handle_interrupts();
             }
         }
     }

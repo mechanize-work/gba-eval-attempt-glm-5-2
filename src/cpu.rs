@@ -68,6 +68,10 @@ pub struct Cpu {
     pub und_r13: u32,
     pub und_r14: u32,
     pub und_spsr: u32,
+    
+    // Banked for USR/SYS (shared between USR and SYS modes)
+    pub usr_r13: u32,
+    pub usr_r14: u32,
 
     // System/user banked (none, uses r13/r14)
 
@@ -111,6 +115,8 @@ impl Cpu {
             und_r13: 0,
             und_r14: 0,
             und_spsr: 0,
+            usr_r13: 0x0300_7F00,
+            usr_r14: 0,
             halted: false,
             vblank_intr_wait: false,
             cycles: 0,
@@ -149,6 +155,8 @@ impl Cpu {
         self.und_r13 = 0;
         self.und_r14 = 0;
         self.und_spsr = 0;
+        self.usr_r13 = 0x0300_7F00;
+        self.usr_r14 = 0;
         self.halted = false;
         self.cycles = 0;
         self.pipeline_fetch = 0;
@@ -216,15 +224,6 @@ impl Cpu {
             MODE_FIQ => {
                 self.fiq_r13 = self.r[13];
                 self.fiq_r14 = self.r[14];
-                // Restore r8-r12 if leaving FIQ
-                if new_mode != MODE_FIQ {
-                    // Save FIQ r8-r12 and restore user r8-r12
-                    // We need to store the user copies somewhere...
-                    // Actually, in our model, we don't store user r8-r12 separately
-                    // For simplicity, let's store them in the fiq array and restore
-                    // But we never saved the user values...
-                    // This is a simplification - proper banking requires shadow storage
-                }
             }
             MODE_IRQ => {
                 self.irq_r13 = self.r[13];
@@ -241,6 +240,10 @@ impl Cpu {
             MODE_UND => {
                 self.und_r13 = self.r[13];
                 self.und_r14 = self.r[14];
+            }
+            MODE_USR | MODE_SYS => {
+                self.usr_r13 = self.r[13];
+                self.usr_r14 = self.r[14];
             }
             _ => {}
         }
@@ -266,6 +269,10 @@ impl Cpu {
             MODE_UND => {
                 self.r[13] = self.und_r13;
                 self.r[14] = self.und_r14;
+            }
+            MODE_USR | MODE_SYS => {
+                self.r[13] = self.usr_r13;
+                self.r[14] = self.usr_r14;
             }
             _ => {
                 // USR and SYS share r13/r14 with... each other
@@ -322,10 +329,14 @@ impl Cpu {
         // ret_addr = self.r[15] which is current instruction address (before pipeline adjustment)
         // For THUMB: LR should be current + 8, ret_addr = current, so LR = ret_addr + 8
         // For ARM: LR should be current + 4, ret_addr = current, so LR = ret_addr + 4
-        // For THUMB: LR = current + 6 (return = LR - 4 = current + 2 = next instruction)
-        // For ARM: LR = current + 4 (return = LR - 4 = current + 4 = next instruction)
+        // For THUMB IRQ: LR = current + 4 so return (SUBS PC, LR, #4) = current (re-execute)
+        // For ARM IRQ: LR = current + 4 so return = current (re-execute)
+        // On ARM, current = instruction address, PC pipeline = current + 8
+        // ARM manual: LR = PC + 4 = current + 8 + 4 = current + 12, return = current + 8 (next)
+        // But GBA BIOS uses SUBS PC, LR, #4, so we need return = current (re-execute)
+        // This means LR = current + 4
         if thumb {
-            self.r[14] = ret_addr.wrapping_add(6);
+            self.r[14] = ret_addr.wrapping_add(4);
         } else {
             self.r[14] = ret_addr.wrapping_add(4);
         }
