@@ -295,6 +295,10 @@ impl Memory {
     #[inline]
     pub fn write_byte(&mut self, addr: u32, val: u8) {
         match addr >> 24 {
+            0x00 => { // BIOS (writable after boot)
+                let a = (addr as usize) & (BIOS_SIZE - 1);
+                self.bios[a] = val;
+            }
             0x02 => { // EWRAM
                 let a = (addr as usize) & (EWRAM_SIZE - 1);
                 self.ewram[a] = val;

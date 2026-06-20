@@ -208,7 +208,6 @@ impl Emulator {
     }
 
     pub fn run_frame(&mut self) {
-        // Run CPU for one frame's worth of cycles
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
 
@@ -233,9 +232,6 @@ impl Emulator {
 
         // Render the frame
         self.ppu.render_frame(&self.mem);
-
-        // Generate audio
-        self.apu.generate_frame(CYCLES_PER_FRAME);
     }
 
     pub fn check_and_handle_interrupts(&mut self) {
