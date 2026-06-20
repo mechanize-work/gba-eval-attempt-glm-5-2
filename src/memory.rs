@@ -155,9 +155,15 @@ pub struct Memory {
     pub palette: Box<[u8; PALETTE_SIZE]>,
     pub vram: Box<[u8; VRAM_SIZE]>,
     pub oam: Box<[u8; OAM_SIZE]>,
-    pub rom: Box<[u8]>,  // variable size
+    pub rom: Box<[u8]>,
     pub rom_size: usize,
     pub openbus: u32,
+    pub dma_cnt: [u32; 4],    // DMA control registers (cached for emulator access)
+    pub timer_cnt: [u16; 4],  // Timer control registers
+    pub timer_data: [u16; 4], // Timer reload values
+    pub apu_regs: [u16; 0x30], // Sound registers 0x60-0x8F
+    pub soundbias: u16,
+    pub haltcnt: u8,
 }
 
 impl Memory {
