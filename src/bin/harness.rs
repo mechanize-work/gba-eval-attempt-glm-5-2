@@ -78,6 +78,9 @@ fn main() {
                 }
             }
         }
+        
+        // Drain audio each frame to prevent buffer overflow
+        let _ = gba_emu::emulator::audio_samples();
     }
 
     // Print audio info
