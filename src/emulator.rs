@@ -255,31 +255,10 @@ impl Emulator {
 
         // Debug
         let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-        if self.frame_count < 10 || dispcnt != 0x0080 {
-            let bg0cnt = (self.mem.io[0x08] as u16) | ((self.mem.io[0x09] as u16) << 8);
-            let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
-            let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
-            eprintln!("Frame {}: dispcnt={:04X} bg0cnt={:04X} pal={} vram={} instrs={} pc={:08X} halted={} viw={} vbo={}",
-                self.frame_count, dispcnt, bg0cnt, pal_nonzero, vram_nonzero, instr_count, self.cpu.r[15],
-                self.cpu.halted, self.cpu.vblank_intr_wait, self.vblank_occurred);
-            let ie = (self.mem.io[0x200] as u16) | ((self.mem.io[0x201] as u16) << 8);
-            let ime = (self.mem.io[0x208] as u16) | ((self.mem.io[0x209] as u16) << 8);
-            eprintln!("  ie={:04X} ime={:04X}", ie, ime);
-            let irq_vec = self.mem.read_word(0x03FFFFFC);
-            eprintln!("  irq_vec={:08X}", irq_vec);
-            let handler_code = self.mem.read_word(irq_vec & !3);
-            eprintln!("  handler_code={:08X}", handler_code);
-            let vblank_ctr = self.mem.read_word(0x030015E0);
-            eprintln!("  vblank_ctr={}", vblank_ctr);
-            // Dump handler code
-            if self.frame_count == 1 {
-                eprintln!("  --- Handler code ---");
-                for i in 0..30 {
-                    let addr = (irq_vec & !3) + i * 4;
-                    let v = self.mem.read_word(addr);
-                    eprintln!("  {:08X}: {:08X}", addr, v);
-                }
-            }
+        if self.frame_count < 5 || dispcnt != 0x0080 {
+            #[cfg(feature = "std")]
+            eprintln!("Frame {}: dispcnt={:04X} instrs={} pc={:08X} halted={}",
+                self.frame_count, dispcnt, instr_count, self.cpu.r[15], self.cpu.halted);
         }
 
         // Render the frame using current display state
@@ -327,14 +306,9 @@ impl Emulator {
             self.irq.if_ = if_val | 1;
             
             if !self.cpu.get_flag(FLAG_I) && self.irq.ime != 0 {
-                #[cfg(feature = "std")]
-                eprintln!("VBlankIntrWait wake: raising IRQ, ie={:04X} if={:04X} ime={:04X}", self.irq.ie, self.irq.if_, self.irq.ime);
                 self.irq_pending_bits = 1; // VBlank bit
                 self.irq_processing = true;
                 self.cpu.raise_irq();
-            } else {
-                #[cfg(feature = "std")]
-                eprintln!("VBlankIntrWait wake: NOT raising IRQ, I={} ime={:04X}", self.cpu.get_flag(FLAG_I), self.irq.ime);
             }
             // Don't clear VBlank IF here - let the IRQ handler see it.
             // The irq_processing cleanup will clear it after the handler returns.
@@ -559,8 +533,6 @@ impl Emulator {
             if self.current_scanline == VISIBLE_LINES as u16 {
                 dispstat |= 0x2; // Set VBlank bit
                 self.vblank_occurred = true;
-                #[cfg(feature = "std")]
-                eprintln!("VBlank at scanline {} cycle_in_scanline={} cycle_count={}", self.current_scanline, self.cycle_in_scanline, self.cycle_count);
                 // Only signal VBlank IRQ if not in VBlankIntrWait
                 if !self.cpu.vblank_intr_wait {
                     self.irq.signal(IRQ_VBLANK);
