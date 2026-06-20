@@ -41,19 +41,22 @@ impl Cpu {
                 self.exec_thumb_pc_rel(instr, mem);
             }
             0x14..=0x17 => {
-                // THUMB.7: Load/store with register offset
-                self.exec_thumb_reg_offset(instr, mem);
+                // THUMB.7/8: bits 15-12 = 0101
+                // bit 9 distinguishes: 0 = THUMB.7 (reg offset), 1 = THUMB.8 (sign-extended)
+                if (instr >> 9) & 1 == 0 {
+                    self.exec_thumb_reg_offset(instr, mem);
+                } else {
+                    self.exec_thumb_signed_transfer(instr, mem);
+                }
             }
-            0x18..=0x1B => {
-                // THUMB.8: Load/store sign-extended byte/halfword with register offset
-                self.exec_thumb_signed_transfer(instr, mem);
-            }
-            0x1C..=0x1F => {
-                // THUMB.9: Load/store with immediate offset (word/byte)
+            0x18..=0x1F => {
+                // THUMB.9: Load/store with immediate offset
+                // bits 15-13 = 011, bits 12-11 = opcode (0=STR, 1=LDR, 2=STRB, 3=LDRB)
                 self.exec_thumb_imm_offset(instr, mem);
             }
             0x20..=0x21 => {
                 // THUMB.10: Load/store halfword with immediate offset
+                // bits 15-12 = 1000
                 self.exec_thumb_halfword_imm_offset(instr, mem);
             }
             0x22..=0x23 | 0x26..=0x27 | 0x2A..=0x2B | 0x3A..=0x3B => {
@@ -93,7 +96,7 @@ impl Cpu {
             }
             0x34..=0x37 => {
                 // THUMB.16: Conditional branch
-                self.exec_thumb_branch_cond(instr);
+                self.exec_thumb_branch_cond(mem, instr);
             }
             0x38..=0x39 => {
                 // THUMB.17: Unconditional branch
@@ -491,30 +494,31 @@ impl Cpu {
 
     fn exec_thumb_imm_offset(&mut self, instr: u16, mem: &mut Memory) {
         // THUMB.9: Load/store with immediate offset
-        // Bit 12: 0=byte, 1=word
-        let is_word = (instr >> 12) & 1 != 0;
-        let is_load = (instr >> 11) & 1 != 0;
-        let offset_val = if is_word {
-            ((instr & 0x7FF) as u32) << 2  // word offset
-        } else {
+        // bits 15-13 = 011, bits 12-11 = opcode: 0=STR word, 1=LDR word, 2=STRB, 3=LDRB
+        let opcode = (instr >> 11) & 0x3;
+        let is_load = opcode & 1 != 0;
+        let is_byte = opcode >= 2;
+        let offset_val = if is_byte {
             (instr & 0x7FF) as u32  // byte offset
+        } else {
+            ((instr & 0x7FF) as u32) << 2  // word offset (shifted by 2)
         };
         let rb = ((instr >> 3) & 0x7) as usize;
         let rd = (instr & 0x7) as usize;
 
         let addr = self.r[rb].wrapping_add(offset_val);
 
-        if is_word {
-            if is_load {
-                self.r[rd] = mem.read_word(addr & !3);
-            } else {
-                mem.write_word(addr & !3, self.r[rd]);
-            }
-        } else {
+        if is_byte {
             if is_load {
                 self.r[rd] = mem.read_byte(addr) as u32;
             } else {
                 mem.write_byte(addr, self.r[rd] as u8);
+            }
+        } else {
+            if is_load {
+                self.r[rd] = mem.read_word(addr & !3);
+            } else {
+                mem.write_word(addr & !3, self.r[rd]);
             }
         }
         self.r[15] = self.r[15].wrapping_add(2);
@@ -666,12 +670,12 @@ impl Cpu {
         self.r[15] = self.r[15].wrapping_add(2);
     }
 
-    fn exec_thumb_branch_cond(&mut self, instr: u16) {
+    fn exec_thumb_branch_cond(&mut self, mem: &mut Memory, instr: u16) {
         let cond = ((instr >> 8) & 0xF) as u32;
         if cond == 0xF {
-            // This shouldn't happen (SWI is 0xDFxx), but just advance PC
-            self.r[15] = self.r[15].wrapping_add(2);
-            self.cycles += 1;
+            // SWI in THUMB mode (bits 15-8 = 0xDF, bits 7-0 = SWI number)
+            let swi_num = (instr & 0xFF) as u32;
+            self.do_swi(mem, swi_num);
             return;
         }
 

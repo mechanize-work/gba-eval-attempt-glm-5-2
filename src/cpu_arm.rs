@@ -1009,6 +1009,14 @@ impl Cpu {
             }
             0x05 => {
                 // VBlankIntrWait - wait for VBlank interrupt
+                // The CPU halts until a VBlank interrupt is processed.
+                // We set a special halt flag that will be checked in the main loop.
+                self.halted = true;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 1;
+            }
+            0x04 => {
+                // IntrWait - wait for interrupt
                 self.halted = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 1;

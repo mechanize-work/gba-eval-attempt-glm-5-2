@@ -244,12 +244,47 @@ impl Emulator {
             if !self.cpu.get_flag(FLAG_I) {
                 self.cpu.raise_irq();
             }
+        } else if self.cpu.halted {
+            // CPU is halted but no interrupt pending.
+            // VBlankIntrWait (SWI 0x05) should wake up on VBlank even without IME/IE.
+            // Check if VBlank IF bit is set (bit 0 of IF)
+            if (self.irq.if_ & 1) != 0 {
+                self.cpu.halted = false;
+            }
         }
     }
 
     fn execute_one(&mut self) {
         // Read instruction at PC
         let pc = self.cpu.r[15];
+
+        // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
+        // This happens because our BIOS stub doesn't implement all functions
+        if pc < 0x4000 {
+            let instr: u32 = if self.cpu.is_thumb() {
+                self.mem.read_half(pc) as u32
+            } else {
+                self.mem.read_word(pc)
+            };
+            if instr == 0 {
+                // Empty BIOS function - just return to caller
+                let lr = self.cpu.r[14];
+                if self.cpu.is_thumb() {
+                    self.cpu.r[15] = lr & !1;
+                    if lr & 1 != 0 {
+                        self.cpu.cpsr |= FLAG_T;
+                    } else {
+                        self.cpu.cpsr &= !FLAG_T;
+                        self.cpu.r[15] &= !3;
+                    }
+                } else {
+                    self.cpu.r[15] = lr & !3;
+                    self.cpu.cpsr &= !FLAG_T;
+                }
+                self.cpu.cycles += 3;
+                return;
+            }
+        }
 
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
