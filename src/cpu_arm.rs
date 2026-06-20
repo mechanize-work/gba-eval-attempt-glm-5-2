@@ -1581,3 +1581,17 @@ fn approx_sin(x: f64) -> f64 {
     let x2 = x * x;
     x - (x * x2) / 6.0 + (x * x2 * x2) / 120.0 - (x * x2 * x2 * x2) / 5040.0
 }
+
+fn cos_table(idx: u32) -> i32 {
+    // idx: 0-255 representing 0 to 2*pi
+    // Returns 8.8 fixed point cosine (0-256 = 0.0-1.0)
+    let angle = (idx as f64) / 256.0 * 2.0 * 3.14159265358979;
+    let c = approx_cos(angle);
+    (c * 256.0) as i32
+}
+
+fn sin_table(idx: u32) -> i32 {
+    let angle = (idx as f64) / 256.0 * 2.0 * 3.14159265358979;
+    let s = approx_sin(angle);
+    (s * 256.0) as i32
+}
