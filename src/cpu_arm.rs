@@ -1397,49 +1397,45 @@ impl Cpu {
 
     fn huff_decomp(mem: &mut Memory, src: u32, dst: u32) {
         let header = mem.read_word(src);
-        let _total_size = header & 0x00FFFFFF;
-        let tree_start = src + 4;
-        let tree_size = (mem.read_word(tree_start) & 0x7FFFFFFF) as u32;
-        let data_start = tree_start.wrapping_add(tree_size.wrapping_mul(4));
+        let total_size = (header & 0x00FFFFFF) as usize;
+        let tree_start = src.wrapping_add(4);
+        let tree_root = mem.read_word(tree_start);
+        let data_start = tree_start.wrapping_add((tree_root & 0x7FFFFFFF).wrapping_mul(4));
         
         let mut src_pos = data_start;
         let mut dst_pos = dst;
+        let mut remaining = total_size;
         let mut bits_left = 0u32;
-        let mut cur_byte: u32 = 0;
-        let mut node: u32 = 1;
+        let mut cur_word: u32 = 0;
+        let mut node_offset: u32 = 1;
         
-        loop {
+        while remaining > 0 {
             if bits_left == 0 {
-                cur_byte = mem.read_word(src_pos);
+                cur_word = mem.read_word(src_pos);
                 src_pos = src_pos.wrapping_add(4);
                 bits_left = 32;
             }
             
-            let bit = cur_byte & 1;
-            cur_byte >>= 1;
+            let bit = cur_word & 1;
+            cur_word >>= 1;
             bits_left -= 1;
             
-            let child = mem.read_word(tree_start.wrapping_add(node.wrapping_mul(4)));
-            node = if bit == 0 {
-                child & 0x3FFFFFFF
-            } else {
-                ((child >> 16) & 0x3FFFFFFF) + 0x4000_0000
-            };
+            let node = mem.read_word(tree_start.wrapping_add(node_offset.wrapping_mul(4)));
             
-            if child & 0x80000000 != 0 {
-                // Leaf node - output byte
+            if node & 0x80000000 != 0 {
                 let val = if bit == 0 {
-                    (child & 0xFF) as u8
+                    (node & 0xFF) as u8
                 } else {
-                    ((child >> 8) & 0xFF) as u8
+                    ((node >> 8) & 0xFF) as u8
                 };
                 mem.write_byte(dst_pos, val);
                 dst_pos = dst_pos.wrapping_add(1);
-                node = 1;
+                remaining -= 1;
+                node_offset = 1;
+            } else {
+                let base = node & 0x3FFFFFFF;
+                node_offset = if bit == 0 { base } else { base.wrapping_add(1) };
             }
-            
-            // Safety check
-            if src_pos > src + 0x100000 { break; }
         }
     }
 
