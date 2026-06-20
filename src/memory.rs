@@ -397,10 +397,6 @@ impl Memory {
     #[inline]
     fn io_write_half(&mut self, addr: u32, val: u16) {
         let a = ((addr - IO_BASE) as usize) & (IO_SIZE - 1);
-        #[cfg(feature = "std")]
-        if a == 0x208 {
-            eprintln!("IME write: {:04X} (from PC will be shown)", val);
-        }
         if a == 0x202 {
             let current = (self.io[a] as u16) | ((self.io[a + 1] as u16) << 8);
             let new_val = current & !val;
