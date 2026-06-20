@@ -286,9 +286,6 @@ impl Emulator {
 
         self.cycle_count = self.cycle_count.wrapping_sub(CYCLES_PER_FRAME);
 
-        // Debug
-        let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-
         // Render the frame using current display state
         self.ppu.render_frame(&self.mem);
         self.frame_count += 1;
