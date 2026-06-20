@@ -78,7 +78,7 @@ impl Dma {
             self.enabled[i] = true;
 
             // Handle immediate transfer (start mode 0 = immediately)
-            let start_mode = (val >> 12) & 0x3;
+            let start_mode = (val >> 28) & 0x3;
             if start_mode == 0 {
                 // Will be processed in run()
             }
@@ -94,7 +94,7 @@ impl Dma {
                 continue;
             }
 
-            let start_mode = (self.cnt[i] >> 12) & 0x3;
+            let start_mode = (self.cnt[i] >> 28) & 0x3;
             // Only handle immediate transfers here
             // Special start modes (VBlank, HBlank, Special) are triggered externally
             if start_mode != 0 {
@@ -110,11 +110,14 @@ impl Dma {
 
     pub fn do_transfer(&mut self, i: usize, mem: &mut Memory, irq: &mut Interrupt) {
         let cnt = self.cnt[i];
-        let is_32bit = cnt & 0x0400 != 0;
-        let src_adj = (cnt >> 7) & 0x3;
-        let dst_adj = (cnt >> 5) & 0x3;
-        let repeat = cnt & 0x0200 != 0;
-        let irq_en = cnt & 0x4000 != 0;
+        // CNT is stored as 32-bit: lower 16 = count, upper 16 = control (CNT_H)
+        // CNT_H bit layout: [15]enable [14]irq [13:12]start [11]drq [10]32bit [9]repeat [8:7]SA [6:5]DA
+        // In 32-bit: enable=bit31, irq=bit30, start=bits29:28, drq=bit27, 32bit=bit26, repeat=bit25, SA=bits24:23, DA=bits22:21
+        let is_32bit = cnt & 0x0400_0000 != 0;
+        let src_adj = (cnt >> 23) & 0x3;
+        let dst_adj = (cnt >> 21) & 0x3;
+        let repeat = cnt & 0x0200_0000 != 0;
+        let irq_en = cnt & 0x4000_0000 != 0;
 
         let size = if is_32bit { 4 } else { 2 };
         let count = self.cur_count[i];
@@ -177,9 +180,12 @@ impl Dma {
             if !self.enabled[i] {
                 continue;
             }
-            let sm = (self.cnt[i] >> 12) & 0x3;
+            let sm = (self.cnt[i] >> 28) & 0x3;
+            eprintln!("DMA trigger({}): ch{} enabled, sm={}, start_mode={}", start_mode, i, sm, start_mode);
             if sm == start_mode {
+                eprintln!("DMA{}: TRIGGERED! SAD={:08X} DAD={:08X} count={}", i, self.cur_src[i], self.cur_dst[i], self.cur_count[i]);
                 self.do_transfer(i, mem, irq);
+                eprintln!("DMA{}: after trigger transfer, DAD[0]={:08X}", i, mem.read_word(self.cur_dst[i] & 0x0FFFFFFF));
             }
         }
     }
@@ -189,11 +195,11 @@ impl Dma {
         if !self.enabled[channel] {
             return;
         }
-        let sm = (self.cnt[channel] >> 12) & 0x3;
+        let sm = (self.cnt[channel] >> 28) & 0x3;
         if sm == 3 {
             // FIFO transfer: 4 bytes from src to FIFO
             let cnt = self.cnt[channel];
-            let src_adj = (cnt >> 7) & 0x3;
+            let src_adj = (cnt >> 23) & 0x3;
 
             let val = mem.read_word(self.cur_src[channel]);
             // Write to FIFO address
@@ -213,8 +219,8 @@ impl Dma {
             }
 
             // Check if we need to repeat
-            let repeat = cnt & 0x0200 != 0;
-            let irq_en = cnt & 0x4000 != 0;
+            let repeat = cnt & 0x0200_0000 != 0;
+            let irq_en = cnt & 0x4000_0000 != 0;
 
             if !repeat {
                 self.enabled[channel] = false;

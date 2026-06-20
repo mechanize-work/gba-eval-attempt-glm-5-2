@@ -406,8 +406,11 @@ impl Emulator {
             let cached_cnt = self.mem.dma_cnt[i];
             let old_enabled = self.dma.cnt[i] & 0x80000000 != 0;
             let new_enabled = cached_cnt & 0x80000000 != 0;
-            if new_enabled && !old_enabled {
-                // DMA just enabled - initialize transfer
+            if new_enabled {
+                eprintln!("DMA{}: new_enabled={}, old_enabled={}, cached_cnt={:08X}, dma.cnt={:08X}",
+                    i, new_enabled, old_enabled, cached_cnt, self.dma.cnt[i]);
+            }
+            if new_enabled && !old_enabled {                // DMA just enabled - initialize transfer
                 let sad_off = 0xB0 + i * 0x0C;
                 let dad_off = 0xB4 + i * 0x0C;
                 self.dma.sad[i] = (self.mem.io[sad_off] as u32)
@@ -428,11 +431,16 @@ impl Emulator {
                 }
                 self.dma.enabled[i] = true;
                 // Execute immediate transfers (start mode 0)
-                let start_mode = (cached_cnt >> 12) & 0x3;
+                let start_mode = (cached_cnt >> 28) & 0x3;
                 if start_mode == 0 {
+                    eprintln!("DMA{}: SAD={:08X} DAD={:08X} CNT={:08X} count={}",
+                        i, self.dma.sad[i], self.dma.dad[i], cached_cnt, self.dma.cur_count[i]);
                     self.dma.do_transfer(i, &mut self.mem, &mut self.irq);
+                    // Verify transfer by reading back first word at DAD
+                    let check = self.mem.read_word(self.dma.dad[i]);
+                    eprintln!("DMA{}: after transfer, read back DAD[0]={:08X}, enabled={}", i, check, self.dma.enabled[i]);
                     // After transfer, clear enable bit if not repeat
-                    let repeat = cached_cnt & 0x0200 != 0;
+                    let repeat = cached_cnt & 0x0200_0000 != 0;
                     if !repeat {
                         self.dma.enabled[i] = false;
                         self.dma.cnt[i] &= !0x80000000;
@@ -442,8 +450,12 @@ impl Emulator {
                     }
                 }
             }
-            // Update DMA CNT from cache
-            self.dma.cnt[i] = self.mem.dma_cnt[i];
+            // Update DMA CNT from cache (but don't overwrite if we just cleared enable)
+            if self.dma.enabled[i] {
+                self.dma.cnt[i] = self.mem.dma_cnt[i];
+            } else {
+                self.dma.cnt[i] = self.mem.dma_cnt[i];
+            }
         }
         // Also run any enabled DMA
         self.dma.run(&mut self.mem, &mut self.irq);
