@@ -131,6 +131,10 @@ impl Emulator {
         // Sound bias = 0x200
         self.mem.io[0x88] = 0x00;
         self.mem.io[0x89] = 0x02;
+        // Enable sound master
+        self.mem.io[0x84] = 0x80;
+        self.mem.io[0x85] = 0x00;
+        self.apu.soundcnt_x = 0x80;
         self.cycle_count = 0;
         self.current_scanline = 0;
         self.cycle_in_scanline = 0;
@@ -464,6 +468,13 @@ impl Emulator {
             let reg_addr = 0x04000000u32 + 0x60u32 + (i as u32) * 2;
             self.apu.write_reg(reg_addr, reg_val);
         }
+        // Sync SOUNDCNT_X from IO (not in apu_regs range)
+        let soundcnt_x = (self.mem.io[0x84] as u16) | ((self.mem.io[0x85] as u16) << 8);
+        self.apu.soundcnt_x = soundcnt_x;
+        // Sync SOUNDBIAS
+        let soundbias = (self.mem.io[0x88] as u16) | ((self.mem.io[0x89] as u16) << 8);
+        self.apu.soundbias = soundbias;
+        self.apu.sample_rate = if soundbias & 0x4000 != 0 { 65536 } else { 32768 };
         self.apu.generate_frame(cycles);
 
         // Sync interrupt flags to IO memory

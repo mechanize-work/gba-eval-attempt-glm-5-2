@@ -10,7 +10,7 @@ use alloc::boxed::Box;
 use std::boxed::Box;
 
 pub struct Apu {
-    pub audio_buffer: Box<[i16; 4096 * 2]>, // stereo interleaved
+    pub audio_buffer: Box<[i16; 8192 * 2]>, // stereo interleaved
     pub audio_count: usize,
 
     // Channel 1: Square with sweep
@@ -94,6 +94,10 @@ pub struct Apu {
     pub soundcnt_l: u16,
     pub soundcnt_h: u16,
     pub soundcnt_x: u16,
+    #[cfg(feature = "std")]
+    pub disabled_count: u32,
+    #[cfg(feature = "std")]
+    pub total_cycles: u32,
     pub soundbias: u16,
 
     // Sample generation
@@ -111,7 +115,7 @@ pub struct Apu {
 impl Apu {
     pub fn new() -> Self {
         Apu {
-            audio_buffer: Box::new([0; 4096 * 2]),
+            audio_buffer: Box::new([0; 8192 * 2]),
             audio_count: 0,
 
             ch1_enable: false,
@@ -188,6 +192,10 @@ impl Apu {
             soundcnt_l: 0,
             soundcnt_h: 0,
             soundcnt_x: 0,
+            #[cfg(feature = "std")]
+            disabled_count: 0,
+            #[cfg(feature = "std")]
+            total_cycles: 0,
             soundbias: 0x200,
 
             sample_timer: 0,
@@ -493,13 +501,15 @@ impl Apu {
     // GBA runs at 16.78 MHz, frame = 280896 cycles
     // At 32768 Hz, samples per frame = 280896 / (16777216 / 32768) ≈ 548.6
     pub fn generate_frame(&mut self, cpu_cycles: u32) {
+        #[cfg(feature = "std")]
+        { self.total_cycles = self.total_cycles.wrapping_add(cpu_cycles); }
+
         if self.soundcnt_x & 0x80 == 0 {
-            // Master disable
+            // Master disable - don't process audio
             return;
         }
 
-        // Clock frame sequencer at 32768/512 = 64 cycles per frame seq step
-        // Actually: 8192 CPU cycles per frame seq step (512 Hz)
+        // Clock frame sequencer
         self.frame_seq_timer += cpu_cycles;
         while self.frame_seq_timer >= 8192 {
             self.frame_seq_timer -= 8192;
@@ -512,7 +522,7 @@ impl Apu {
 
         while self.sample_timer >= cycles_per_sample {
             self.sample_timer -= cycles_per_sample;
-            if self.audio_count >= 4096 {
+            if self.audio_count >= 8192 {
                 break;
             }
             self.generate_sample();

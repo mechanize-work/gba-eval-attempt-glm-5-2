@@ -85,5 +85,12 @@ fn main() {
     let audio_rate = gba_emu::emulator::audio_rate();
     eprintln!("Audio: {} samples at {} Hz", audio_samples, audio_rate);
     
+    // Debug: check APU state
+    {
+        let emu = gba_emu::emulator::get_emu();
+        #[cfg(feature = "std")]
+        eprintln!("  soundcnt_x={:04X} total_cycles={}", emu.apu.soundcnt_x, emu.apu.total_cycles);
+    }
+    
     eprintln!("Done running {} frames", frames);
 }
