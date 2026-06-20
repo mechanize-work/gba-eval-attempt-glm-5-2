@@ -244,17 +244,25 @@ impl Emulator {
             self.check_and_handle_interrupts();
 
             if self.cpu.halted {
-                // Fast-forward to next VBlank or interrupt
-                let cycles_to_vblank = if self.current_scanline < VISIBLE_LINES as u16 {
-                    (VISIBLE_LINES as u32 - self.current_scanline as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
+                if self.cpu.vblank_intr_wait {
+                    // VBlankIntrWait: fast-forward to next VBlank
+                    let cycles_to_vblank = if self.current_scanline < VISIBLE_LINES as u16 {
+                        (VISIBLE_LINES as u32 - self.current_scanline as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
+                    } else {
+                        (TOTAL_LINES as u32 - self.current_scanline as u32 + VISIBLE_LINES as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
+                    };
+                    let remaining = target_cycles.wrapping_sub(self.cycle_count);
+                    let advance = cycles_to_vblank.min(remaining).max(1);
+                    self.cycle_count = self.cycle_count.wrapping_add(advance);
+                    self.advance_hardware(advance);
                 } else {
-                    // Already in VBlank, wait for next one
-                    (TOTAL_LINES as u32 - self.current_scanline as u32 + VISIBLE_LINES as u32) * CYCLES_PER_SCANLINE - self.cycle_in_scanline
-                };
-                let remaining = target_cycles.wrapping_sub(self.cycle_count);
-                let advance = cycles_to_vblank.min(remaining).max(1);
-                self.cycle_count = self.cycle_count.wrapping_add(advance);
-                self.advance_hardware(advance);
+                    // Regular HALT: advance one scanline at a time to check for interrupts
+                    let cycles_to_next_scanline = CYCLES_PER_SCANLINE - self.cycle_in_scanline;
+                    let remaining = target_cycles.wrapping_sub(self.cycle_count);
+                    let advance = cycles_to_next_scanline.min(remaining).max(1);
+                    self.cycle_count = self.cycle_count.wrapping_add(advance);
+                    self.advance_hardware(advance);
+                }
                 instr_count += 1;
                 halt_count += 1;
             } else {
