@@ -479,7 +479,8 @@ impl Ppu {
         mode: u16,
     ) {
         let priority = bgcnt & 3;
-        let page = (bgcnt >> 4) & 0x1; // for modes 4,5
+        // Page select for modes 4/5 comes from DISPCNT bit 4, not BG2CNT
+        let page = (self.snap_dispcnt >> 4) & 0x1;
 
         match mode {
             3 => {
@@ -753,7 +754,8 @@ impl Ppu {
                 if y_in && x_in {
                     win_layer_en = winin & 0x3F;
                     win_blend_en = winin & 0x40 != 0;
-                    return self.composite_pixel(x, fb_offset, bg_pixels, obj_pixels, bg_en, obj_en, bldcnt, bldalpha, bldy, backdrop, win_layer_en, win_blend_en);
+                    self.composite_pixel(x, fb_offset, bg_pixels, obj_pixels, bg_en, obj_en, bldcnt, bldalpha, bldy, backdrop, win_layer_en, win_blend_en);
+                    continue;
                 }
             }
 
@@ -771,7 +773,8 @@ impl Ppu {
                 if y_in && x_in {
                     win_layer_en = (winin >> 8) & 0x3F;
                     win_blend_en = winin & 0x4000 != 0;
-                    return self.composite_pixel(x, fb_offset, bg_pixels, obj_pixels, bg_en, obj_en, bldcnt, bldalpha, bldy, backdrop, win_layer_en, win_blend_en);
+                    self.composite_pixel(x, fb_offset, bg_pixels, obj_pixels, bg_en, obj_en, bldcnt, bldalpha, bldy, backdrop, win_layer_en, win_blend_en);
+                    continue;
                 }
             }
 
@@ -779,7 +782,8 @@ impl Ppu {
             if winobj_en && obj_pixels[x].opaque {
                 win_layer_en = winout & 0x3F;
                 win_blend_en = winout & 0x40 != 0;
-                return self.composite_pixel(x, fb_offset, bg_pixels, obj_pixels, bg_en, obj_en, bldcnt, bldalpha, bldy, backdrop, win_layer_en, win_blend_en);
+                self.composite_pixel(x, fb_offset, bg_pixels, obj_pixels, bg_en, obj_en, bldcnt, bldalpha, bldy, backdrop, win_layer_en, win_blend_en);
+                continue;
             }
 
             // Outside all windows
