@@ -1302,10 +1302,192 @@ impl Cpu {
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 5 + total_count as u64;
             }
+            0x0E => {
+                // BitUnPack: skip for now
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 10;
+            }
+            0x0F | 0x10 => {
+                // LZ77 decompression (0x0F=8bit write, 0x10=16bit write)
+                let src = self.r[0];
+                let dst = self.r[1];
+                Self::lz77_decomp(mem, src, dst, swi_num == 0x10);
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 100;
+            }
+            0x11 => {
+                // Huffman decompression
+                let src = self.r[0];
+                let dst = self.r[1];
+                Self::huff_decomp(mem, src, dst);
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 100;
+            }
+            0x12 | 0x13 => {
+                // RL decompression (0x12=8bit, 0x13=16bit)
+                let src = self.r[0];
+                let dst = self.r[1];
+                Self::rl_decomp(mem, src, dst, swi_num == 0x13);
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 100;
+            }
             _ => {
                 // Unknown SWI - just advance PC
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 1;
+            }
+        }
+    }
+}
+
+// GBA BIOS decompression functions
+impl Cpu {
+    fn lz77_decomp(mem: &mut Memory, src: u32, dst: u32, wide: bool) {
+        let header = mem.read_word(src);
+        let total_size = header & 0x00FFFFFF;
+        let mut src_pos = src + 4;
+        let mut dst_pos = dst;
+        let mut remaining = total_size as usize;
+        
+        while remaining > 0 {
+            let flags = mem.read_byte(src_pos);
+            src_pos = src_pos.wrapping_add(1);
+            
+            for i in 0..8 {
+                if remaining == 0 { break; }
+                if flags & (0x80 >> i) != 0 {
+                    // Compressed: 2 bytes = length + offset
+                    let b1 = mem.read_byte(src_pos) as u16;
+                    let b2 = mem.read_byte(src_pos + 1) as u16;
+                    src_pos = src_pos.wrapping_add(2);
+                    let length = ((b1 >> 4) + 3) as usize;
+                    let offset = (((b1 & 0xF) << 8) | b2) as usize + 1;
+                    
+                    let back_pos = dst_pos.wrapping_sub(offset as u32);
+                    for _ in 0..length {
+                        let val = mem.read_byte(back_pos + (dst_pos.wrapping_sub(back_pos) - offset as u32) % offset as u32);
+                        if remaining == 0 { break; }
+                        if wide {
+                            mem.write_half(dst_pos, val as u16);
+                            dst_pos = dst_pos.wrapping_add(2);
+                            remaining = remaining.saturating_sub(2);
+                        } else {
+                            mem.write_byte(dst_pos, val);
+                            dst_pos = dst_pos.wrapping_add(1);
+                            remaining = remaining.saturating_sub(1);
+                        }
+                    }
+                } else {
+                    // Uncompressed: 1 byte
+                    let val = mem.read_byte(src_pos);
+                    src_pos = src_pos.wrapping_add(1);
+                    if wide {
+                        mem.write_half(dst_pos, val as u16);
+                        dst_pos = dst_pos.wrapping_add(2);
+                        remaining = remaining.saturating_sub(2);
+                    } else {
+                        mem.write_byte(dst_pos, val);
+                        dst_pos = dst_pos.wrapping_add(1);
+                        remaining = remaining.saturating_sub(1);
+                    }
+                }
+            }
+        }
+    }
+
+    fn huff_decomp(mem: &mut Memory, src: u32, dst: u32) {
+        let header = mem.read_word(src);
+        let _total_size = header & 0x00FFFFFF;
+        let tree_start = src + 4;
+        let tree_size = (mem.read_word(tree_start) & 0x7FFFFFFF) as u32;
+        let data_start = tree_start.wrapping_add(tree_size.wrapping_mul(4));
+        
+        let mut src_pos = data_start;
+        let mut dst_pos = dst;
+        let mut bits_left = 0u32;
+        let mut cur_byte: u32 = 0;
+        let mut node: u32 = 1;
+        
+        loop {
+            if bits_left == 0 {
+                cur_byte = mem.read_word(src_pos);
+                src_pos = src_pos.wrapping_add(4);
+                bits_left = 32;
+            }
+            
+            let bit = cur_byte & 1;
+            cur_byte >>= 1;
+            bits_left -= 1;
+            
+            let child = mem.read_word(tree_start.wrapping_add(node.wrapping_mul(4)));
+            node = if bit == 0 {
+                child & 0x3FFFFFFF
+            } else {
+                ((child >> 16) & 0x3FFFFFFF) + 0x4000_0000
+            };
+            
+            if child & 0x80000000 != 0 {
+                // Leaf node - output byte
+                let val = if bit == 0 {
+                    (child & 0xFF) as u8
+                } else {
+                    ((child >> 8) & 0xFF) as u8
+                };
+                mem.write_byte(dst_pos, val);
+                dst_pos = dst_pos.wrapping_add(1);
+                node = 1;
+            }
+            
+            // Safety check
+            if src_pos > src + 0x100000 { break; }
+        }
+    }
+
+    fn rl_decomp(mem: &mut Memory, src: u32, dst: u32, wide: bool) {
+        let header = mem.read_word(src);
+        let total_size = header & 0x00FFFFFF;
+        let mut src_pos = src + 4;
+        let mut dst_pos = dst;
+        let mut remaining = total_size as usize;
+        
+        while remaining > 0 {
+            let flag = mem.read_byte(src_pos);
+            src_pos = src_pos.wrapping_add(1);
+            
+            if flag & 0x80 != 0 {
+                // Run: repeat next byte (flag & 0x7F) + 3 times
+                let count = ((flag & 0x7F) + 3) as usize;
+                let val = mem.read_byte(src_pos);
+                src_pos = src_pos.wrapping_add(1);
+                for _ in 0..count {
+                    if remaining == 0 { break; }
+                    if wide {
+                        mem.write_half(dst_pos, val as u16);
+                        dst_pos = dst_pos.wrapping_add(2);
+                        remaining = remaining.saturating_sub(2);
+                    } else {
+                        mem.write_byte(dst_pos, val);
+                        dst_pos = dst_pos.wrapping_add(1);
+                        remaining = remaining.saturating_sub(1);
+                    }
+                }
+            } else {
+                // Raw: copy (flag + 1) bytes
+                let count = (flag + 1) as usize;
+                for _ in 0..count {
+                    if remaining == 0 { break; }
+                    let val = mem.read_byte(src_pos);
+                    src_pos = src_pos.wrapping_add(1);
+                    if wide {
+                        mem.write_half(dst_pos, val as u16);
+                        dst_pos = dst_pos.wrapping_add(2);
+                        remaining = remaining.saturating_sub(2);
+                    } else {
+                        mem.write_byte(dst_pos, val);
+                        dst_pos = dst_pos.wrapping_add(1);
+                        remaining = remaining.saturating_sub(1);
+                    }
+                }
             }
         }
     }
