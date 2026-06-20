@@ -56,7 +56,9 @@ impl Timer {
             // Check overflow
             if self.counter[i] >= 0x10000 {
                 let overflows = self.counter[i] >> 16;
-                self.counter[i] &= 0xFFFF;
+                // Reload from data value, preserving remainder
+                let reload = self.data[i] as u32;
+                self.counter[i] = reload + (self.counter[i] & 0xFFFF);
 
                 // Reload
                 let _reload = self.data[i] as u32;
@@ -78,7 +80,8 @@ impl Timer {
                     if next_cascade && (self.cnt[i + 1] & 0x80) != 0 {
                         self.counter[i + 1] = self.counter[i + 1].wrapping_add(overflows);
                         if self.counter[i + 1] >= 0x10000 {
-                            self.counter[i + 1] &= 0xFFFF;
+                            let reload_next = self.data[i + 1] as u32;
+                            self.counter[i + 1] = reload_next + (self.counter[i + 1] & 0xFFFF);
                             if self.cnt[i + 1] & 0x40 != 0 {
                                 match i + 1 {
                                     1 => irq.signal(IRQ_TIMER1),

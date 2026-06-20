@@ -479,6 +479,14 @@ impl Emulator {
         }
         self.timer.run(cycles, &mut self.irq);
 
+        // Sync timer counters back to IO memory
+        for i in 0..4 {
+            let counter = self.timer.read_counter(i);
+            let off = 0x100 + i * 4;
+            self.mem.io[off] = (counter & 0xFF) as u8;
+            self.mem.io[off + 1] = ((counter >> 8) & 0xFF) as u8;
+        }
+
         // Update APU - sync registers from IO memory
         for i in 0..0x18 {
             let reg_val = self.mem.apu_regs[i];
