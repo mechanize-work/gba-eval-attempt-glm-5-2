@@ -1284,29 +1284,46 @@ impl Cpu {
             0x0C => {
                 // CpuFastSet: fast copy from R0 to R1, R2 = count (in words)
                 // Always 32-bit, copies in chunks of 8 words (32 bytes)
+                // R2 bits 0-20: count, bit 24: 0=copy, 1=fill (fixed source)
                 let src = self.r[0] & !3; // Word-align source
                 let dst = self.r[1] & !3; // Word-align dest
-                let total_count = self.r[2] & 0x0003_FFFF; // lower 22 bits
+                let total_count = self.r[2] & 0x001F_FFFF; // lower 21 bits
+                let fixed_src = self.r[2] & 0x0100_0000 != 0; // bit 24
                 let mut count = total_count;
                 let mut s = src;
                 let mut d = dst;
 
-                // CpuFastSet copies in chunks of 8 words (32 bytes)
-                while count >= 8 {
-                    for _ in 0..8 {
+                if fixed_src {
+                    // Fill mode: read from source once, write to all destinations
+                    let val = mem.read_word(s);
+                    while count >= 8 {
+                        for _ in 0..8 {
+                            mem.write_word(d, val);
+                            d = d.wrapping_add(4);
+                        }
+                        count -= 8;
+                    }
+                    for _ in 0..count {
+                        mem.write_word(d, val);
+                        d = d.wrapping_add(4);
+                    }
+                } else {
+                    // Copy mode
+                    while count >= 8 {
+                        for _ in 0..8 {
+                            let val = mem.read_word(s);
+                            mem.write_word(d, val);
+                            s = s.wrapping_add(4);
+                            d = d.wrapping_add(4);
+                        }
+                        count -= 8;
+                    }
+                    for _ in 0..count {
                         let val = mem.read_word(s);
                         mem.write_word(d, val);
                         s = s.wrapping_add(4);
                         d = d.wrapping_add(4);
                     }
-                    count -= 8;
-                }
-                // Handle remaining words
-                for _ in 0..count {
-                    let val = mem.read_word(s);
-                    mem.write_word(d, val);
-                    s = s.wrapping_add(4);
-                    d = d.wrapping_add(4);
                 }
                 self.r[0] = src;
                 self.r[1] = dst;

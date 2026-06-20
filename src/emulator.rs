@@ -412,6 +412,7 @@ impl Emulator {
 
         // Read instruction at PC
         let pc = self.cpu.r[15];
+        let old_r4 = self.cpu.r[4];
 
         // Detect invalid PC
         #[cfg(feature = "std")]
@@ -481,6 +482,13 @@ impl Emulator {
         if self.mem.haltcnt & 0x80 != 0 {
             self.cpu.halted = true;
             self.mem.haltcnt = 0; // Clear to prevent re-triggering
+        }
+
+        // Trace R4 changes
+        #[cfg(feature = "std")]
+        if self.cpu.r[4] != old_r4 && self.frame_count >= 3 && self.frame_count <= 4 && !self.bad_pc_warned {
+            eprintln!("R4 change: {:08X} -> {:08X} at PC={:08X} frame={}",
+                old_r4, self.cpu.r[4], pc, self.frame_count);
         }
 
         // Sync cycles
