@@ -661,6 +661,10 @@ impl Cpu {
                 }
             }
             self.cycles += count as u64 + 2;
+            // For LDMIA, write-back only if rb is NOT in the register list
+            if reg_list & (1 << rb) == 0 {
+                self.r[rb] = self.r[rb].wrapping_add(count * 4);
+            }
         } else {
             for i in 0..8 {
                 if reg_list & (1 << i) != 0 {
@@ -674,8 +678,9 @@ impl Cpu {
                 }
             }
             self.cycles += count as u64 + 1;
+            // STMIA always writes back
+            self.r[rb] = self.r[rb].wrapping_add(count * 4);
         }
-        self.r[rb] = self.r[rb].wrapping_add(count * 4);
         self.r[15] = self.r[15].wrapping_add(2);
     }
 
