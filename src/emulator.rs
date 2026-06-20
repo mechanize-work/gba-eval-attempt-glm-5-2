@@ -447,6 +447,12 @@ impl Emulator {
             self.vblank_occurred = false;
         }
 
+        // Check HALTCNT register for HALT/STOP
+        if self.mem.haltcnt & 0x80 != 0 {
+            self.cpu.halted = true;
+            self.mem.haltcnt = 0; // Clear to prevent re-triggering
+        }
+
         // Sync cycles
         let cycles = self.cpu.cycles as u32;
         self.cpu.cycles = 0;

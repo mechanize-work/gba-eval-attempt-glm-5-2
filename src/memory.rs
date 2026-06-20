@@ -407,6 +407,7 @@ impl Memory {
         if a == 0x130 || a == 0x131 { return; }
         if a == 0x300 {
             self.io[a] = (val & 0xFF) as u8;
+            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
             self.haltcnt = (val & 0xFF) as u8;
             return;
         }
