@@ -1450,17 +1450,16 @@ impl Cpu {
 
     fn rl_decomp(mem: &mut Memory, src: u32, dst: u32, wide: bool) {
         let header = mem.read_word(src);
-        let total_size = header & 0x00FFFFFF;
-        let mut src_pos = src + 4;
+        let total_size = (header & 0x00FFFFFF) as usize;
+        let mut src_pos = src.wrapping_add(4);
         let mut dst_pos = dst;
-        let mut remaining = total_size as usize;
+        let mut remaining = total_size;
         
         while remaining > 0 {
             let flag = mem.read_byte(src_pos);
             src_pos = src_pos.wrapping_add(1);
             
             if flag & 0x80 != 0 {
-                // Run: repeat next byte (flag & 0x7F) + 3 times
                 let count = ((flag & 0x7F) + 3) as usize;
                 let val = mem.read_byte(src_pos);
                 src_pos = src_pos.wrapping_add(1);
@@ -1469,15 +1468,13 @@ impl Cpu {
                     if wide {
                         mem.write_half(dst_pos, val as u16);
                         dst_pos = dst_pos.wrapping_add(2);
-                        remaining = remaining.saturating_sub(2);
                     } else {
                         mem.write_byte(dst_pos, val);
                         dst_pos = dst_pos.wrapping_add(1);
-                        remaining = remaining.saturating_sub(1);
                     }
+                    remaining -= 1;
                 }
             } else {
-                // Raw: copy (flag + 1) bytes
                 let count = (flag + 1) as usize;
                 for _ in 0..count {
                     if remaining == 0 { break; }
@@ -1486,12 +1483,11 @@ impl Cpu {
                     if wide {
                         mem.write_half(dst_pos, val as u16);
                         dst_pos = dst_pos.wrapping_add(2);
-                        remaining = remaining.saturating_sub(2);
                     } else {
                         mem.write_byte(dst_pos, val);
                         dst_pos = dst_pos.wrapping_add(1);
-                        remaining = remaining.saturating_sub(1);
                     }
+                    remaining -= 1;
                 }
             }
         }
