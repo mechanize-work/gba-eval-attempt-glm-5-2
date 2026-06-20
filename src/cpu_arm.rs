@@ -136,9 +136,9 @@ impl Cpu {
         let a = self.r[rn] as i32;
         let b = self.r[rm] as i32;
 
-        fn saturate(val: i64) -> i32 {
+        fn _saturate(val: i64) -> i32 {
             if val > 0x7FFF_FFFF { 0x7FFF_FFFF }
-            else if val < -0x8000_0000i64 { -0x8000_0000i64 }
+            else if val < -0x8000_0000i64 { -0x8000_0000i32 }
             else { val as i32 }
         }
 
@@ -823,7 +823,7 @@ impl Cpu {
         let offset = (instr & 0x00FF_FFFF) as i32;
         // Sign extend
         let offset = if offset & 0x0080_0000 != 0 {
-            offset | 0xFF00_0000
+            offset | 0xFF00_0000u32 as i32
         } else {
             offset
         };

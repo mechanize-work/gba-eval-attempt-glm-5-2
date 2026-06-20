@@ -387,9 +387,9 @@ impl Ppu {
             let my = (y >> 8) as i32;
 
             let (mx, my) = if wrap {
-                (mx & (map_dim * 8 - 1), my & (map_dim * 8 - 1))
+                (mx & ((map_dim * 8 - 1) as i32), my & ((map_dim * 8 - 1) as i32))
             } else {
-                if mx < 0 || mx >= (map_dim * 8) || my < 0 || my >= (map_dim * 8) {
+                if mx < 0 || mx >= (map_dim * 8) as i32 || my < 0 || my >= (map_dim * 8) as i32 {
                     x += pa;
                     y += pc;
                     continue;
@@ -562,6 +562,7 @@ impl Ppu {
 
             // VFlip
             let dy = if vflip { h - 1 - dy } else { dy };
+            let dy = dy as u32;
 
             let is_affine = attr0_mode == 1;
             let affine_idx = if is_affine {
@@ -574,6 +575,8 @@ impl Ppu {
             let char_base = ((dispcnt >> 4) & 0x3) as u32 * 0x4000;
             let char_addr = 0x0601_0000 + char_base;
 
+            let w_u32 = w as u32;
+
             // For each pixel in the sprite on this line
             for dx in 0..w {
                 let screen_x = x + dx;
@@ -583,10 +586,11 @@ impl Ppu {
                 }
 
                 let dx2 = if hflip { w - 1 - dx } else { dx };
+                let dx2 = dx2 as u32;
 
                 if is_8bpp {
                     // 8bpp: 64 bytes per tile
-                    let tile_idx = tile_num + (dy / 8) * (w as u32 / 8) + (dx2 / 8);
+                    let tile_idx = tile_num + (dy / 8) * (w_u32 / 8) + (dx2 / 8);
                     let tile_offset = tile_idx * 64 + (dy % 8) * 8 + (dx2 % 8);
 
                     if obj_mode == 0 {
@@ -622,7 +626,7 @@ impl Ppu {
                     }
                 } else {
                     // 4bpp: 32 bytes per tile
-                    let tile_idx = tile_num + (dy / 8) * (w as u32 / 8) + (dx2 / 8);
+                    let tile_idx = tile_num + (dy / 8) * (w_u32 / 8) + (dx2 / 8);
                     let tile_offset = tile_idx * 32 + (dy % 8) * 4 + (dx2 / 2);
                     let addr = char_addr + tile_offset;
                     let byte = mem.read_vram_byte(addr & 0x06FF_FFFF);
@@ -960,6 +964,8 @@ fn rgb555_to_abgr(c: u16) -> u32 {
 
 #[inline]
 fn blend_alpha(top: u16, bottom: u16, eva: u16, evb: u16) -> u16 {
+    let eva = eva as u32;
+    let evb = evb as u32;
     let tr = (top & 0x1F) as u32;
     let tg = ((top >> 5) & 0x1F) as u32;
     let tb = ((top >> 10) & 0x1F) as u32;
@@ -976,6 +982,7 @@ fn blend_alpha(top: u16, bottom: u16, eva: u16, evb: u16) -> u16 {
 
 #[inline]
 fn blend_bright(c: u16, evy: u16, increase: bool) -> u16 {
+    let evy = evy as u32;
     let r = (c & 0x1F) as u32;
     let g = ((c >> 5) & 0x1F) as u32;
     let b = ((c >> 10) & 0x1F) as u32;

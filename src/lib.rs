@@ -33,10 +33,7 @@ impl WasmAllocator {
     }
 }
 
-extern "C" {
-    fn memory_grow(num_pages: usize) -> usize;
-    fn memory_size() -> usize;
-}
+// No extern needed - use core::arch::wasm32 intrinsics
 
 unsafe impl GlobalAlloc for WasmAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -56,10 +53,10 @@ unsafe impl GlobalAlloc for WasmAllocator {
         let new_ptr = aligned + size;
 
         // Check if we need more pages
-        let current_pages = memory_size() * WASM_PAGE_SIZE;
+        let current_pages = core::arch::wasm32::memory_size(0) * WASM_PAGE_SIZE;
         if new_ptr > current_pages {
             let needed_pages = (new_ptr - current_pages + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
-            let result = memory_grow(needed_pages);
+            let result = core::arch::wasm32::memory_grow(0, needed_pages);
             if result == usize::MAX {
                 return ptr::null_mut();
             }
@@ -80,6 +77,8 @@ static A: WasmAllocator = WasmAllocator {
 };
 
 mod cpu;
+mod cpu_arm;
+mod cpu_thumb;
 mod memory;
 mod ppu;
 mod apu;

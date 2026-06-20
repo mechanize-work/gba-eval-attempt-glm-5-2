@@ -33,11 +33,11 @@ impl Cpu {
             }
             0x6 => {
                 // 110: Load/store with register offset
-                self.exec_thumb_reg_offset(instr);
+                self.exec_thumb_reg_offset(mem, instr);
             }
             0x7 => {
                 // 111: Load/store sign-extended byte/halfword
-                self.exec_thumb_signed_transfer(instr);
+                self.exec_thumb_signed_transfer(mem, instr);
             }
             _ => unreachable!(),
         }
@@ -47,11 +47,11 @@ impl Cpu {
         match top4 {
             0x8 => {
                 // Load/store halfword
-                self.exec_thumb_halfword_transfer(instr);
+                self.exec_thumb_halfword_transfer(mem, instr);
             }
             0x9 => {
                 // SP-relative load/store
-                self.exec_thumb_sp_rel(instr);
+                self.exec_thumb_sp_rel(mem, instr);
             }
             0xA => {
                 // Load address
@@ -63,11 +63,11 @@ impl Cpu {
             }
             0xC => {
                 // Push/pop registers
-                self.exec_thumb_push_pop(instr);
+                self.exec_thumb_push_pop(mem, instr);
             }
             0xD => {
                 // Multiple load/store
-                self.exec_thumb_multiple(instr);
+                self.exec_thumb_multiple(mem, instr);
             }
             0xE => {
                 // Conditional branch
@@ -83,7 +83,7 @@ impl Cpu {
                     // Unconditional branch
                     let offset = (instr & 0x7FF) as i32;
                     let offset = if offset & 0x400 != 0 {
-                        offset | 0xFFFFF800
+                        offset | (0xFFFFF800u32 as i32)
                     } else {
                         offset
                     };
@@ -156,17 +156,13 @@ impl Cpu {
         let rs = ((instr >> 3) & 0x7) as usize;
         let rd = (instr & 0x7) as usize;
 
-        let operand = if is_imm {
-            (instr >> 6) & 0x7
-        } else {
-            ((instr >> 6) & 0x7) as u16 as usize
-        };
+        let operand_idx = ((instr >> 6) & 0x7) as usize;
 
         let a = self.r[rs];
         let b = if is_imm {
-            operand as u32
+            operand_idx as u32
         } else {
-            self.r[operand]
+            self.r[operand_idx]
         };
 
         let (result, carry, overflow) = match op {
@@ -494,7 +490,7 @@ impl Cpu {
 
     fn exec_thumb_halfword_transfer(&mut self, mem: &mut Memory, instr: u16) {
         let is_load = (instr >> 11) & 1 != 0;
-        let imm = ((instr >> 6) & 0x1F) as u32 << 1;
+        let imm = (((instr >> 6) & 0x1F) as u32) << 1;
         let rb = ((instr >> 3) & 0x7) as usize;
         let rd = (instr & 0x7) as usize;
 
@@ -647,10 +643,10 @@ impl Cpu {
             return;
         }
 
-        if self.check_cond(cond) {
+        if self.check_cond(cond as u32) {
             let offset = (instr & 0xFF) as i32;
             let offset = if offset & 0x80 != 0 {
-                offset | 0xFFFFFF00
+                offset | (0xFFFFFF00u32 as i32)
             } else {
                 offset
             };
