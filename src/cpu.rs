@@ -322,8 +322,10 @@ impl Cpu {
         // ret_addr = self.r[15] which is current instruction address (before pipeline adjustment)
         // For THUMB: LR should be current + 8, ret_addr = current, so LR = ret_addr + 8
         // For ARM: LR should be current + 4, ret_addr = current, so LR = ret_addr + 4
+        // For THUMB: LR = current + 6 (return = LR - 4 = current + 2 = next instruction)
+        // For ARM: LR = current + 4 (return = LR - 4 = current + 4 = next instruction)
         if thumb {
-            self.r[14] = ret_addr.wrapping_add(8);
+            self.r[14] = ret_addr.wrapping_add(6);
         } else {
             self.r[14] = ret_addr.wrapping_add(4);
         }

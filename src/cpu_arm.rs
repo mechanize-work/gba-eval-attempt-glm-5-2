@@ -1009,9 +1009,16 @@ impl Cpu {
             }
             0x05 => {
                 // VBlankIntrWait - wait for NEXT VBlank
-                // Clear VBlank IF bit
+                // On real GBA, this clears VBlank IF, waits for next VBlank,
+                // then processes the VBlank IRQ (calling user handler which
+                // increments the VBlank counter at [0x030015E0]).
+                // Since our BIOS stub doesn't implement the full IRQ dispatch,
+                // we directly increment the counter to simulate the handler.
                 let if_val = mem.read_half(0x0400_0202);
                 mem.write_half(0x0400_0202, if_val & !1);
+                // Increment the VBlank counter that the game uses for init timing
+                let counter = mem.read_word(0x0300_15E0);
+                mem.write_word(0x0300_15E0, counter.wrapping_add(1));
                 self.halted = true;
                 self.vblank_intr_wait = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);

@@ -46,6 +46,8 @@ pub struct Emulator {
     pub cycle_in_scanline: u32,
     pub vblank_waiting: bool,
     pub vblank_occurred: bool,
+    pub irq_processing: bool,
+    pub irq_pending_bits: u16,
 }
 
 impl Emulator {
@@ -70,6 +72,8 @@ impl Emulator {
             cycle_in_scanline: 0,
             vblank_waiting: false,
             vblank_occurred: false,
+            irq_processing: false,
+            irq_pending_bits: 0,
         }
     }
 
@@ -207,21 +211,21 @@ impl Emulator {
         // Run CPU for one frame's worth of cycles
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
-        let start_cc = self.cycle_count;
 
         while self.cycle_count < target_cycles && instr_count < 2_000_000 {
-            // Check for interrupts
+            // Check for interrupts (between instructions, like real hardware)
             self.check_and_handle_interrupts();
 
-            // Execute one instruction
+            // Execute one instruction (or advance if halted)
             if self.cpu.halted {
-                // CPU is halted (HALTCNT), just advance cycles
                 self.cycle_count = self.cycle_count.wrapping_add(1);
                 self.advance_hardware(1);
                 instr_count += 1;
             } else {
                 self.execute_one();
                 instr_count += 1;
+                // Check for interrupts AFTER instruction (between instructions)
+                self.check_and_handle_interrupts();
             }
         }
 
@@ -238,6 +242,21 @@ impl Emulator {
     }
 
     pub fn check_and_handle_interrupts(&mut self) {
+        // If we just finished processing an IRQ (CPU returned from IRQ mode),
+        // clear the processed IF bits FIRST to prevent infinite re-triggering
+        if self.irq_processing {
+            let mode = self.cpu.cpsr & 0x1F;
+            if mode != MODE_IRQ {
+                self.irq_processing = false;
+                let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
+                let new_if = if_val & !self.irq_pending_bits;
+                self.mem.io[0x202] = (new_if & 0xFF) as u8;
+                self.mem.io[0x203] = ((new_if >> 8) & 0xFF) as u8;
+                self.irq.if_ = new_if;
+                self.irq_pending_bits = 0;
+            }
+        }
+        
         // Sync IF from IO memory to irq struct
         self.irq.if_ = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
         // Read IE, IME from IO
@@ -247,17 +266,9 @@ impl Emulator {
         if self.irq.pending() {
             self.cpu.halted = false;
             if !self.cpu.get_flag(FLAG_I) {
-                // Save which interrupts are being processed
-                let pending_bits = self.irq.ie & self.irq.if_;
-                // Raise the IRQ exception
+                self.irq_pending_bits = self.irq.ie & self.irq.if_;
+                self.irq_processing = true;
                 self.cpu.raise_irq();
-                // Clear the IF bits that were just processed
-                // This prevents infinite IRQ loops when the handler
-                // doesn't properly clear IF
-                let new_if = self.irq.if_ & !pending_bits;
-                self.mem.io[0x202] = (new_if & 0xFF) as u8;
-                self.mem.io[0x203] = ((new_if >> 8) & 0xFF) as u8;
-                self.irq.if_ = new_if;
             }
         } else if self.cpu.halted {
             if self.vblank_occurred {
