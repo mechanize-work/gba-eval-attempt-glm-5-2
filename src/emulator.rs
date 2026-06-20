@@ -236,9 +236,6 @@ impl Emulator {
 
         // Generate audio
         self.apu.generate_frame(CYCLES_PER_FRAME);
-
-        // Signal VBlank interrupt
-        self.irq.signal(IRQ_VBLANK);
     }
 
     pub fn check_and_handle_interrupts(&mut self) {
@@ -403,8 +400,12 @@ impl Emulator {
             // VBlank occurs at line 160
             if self.current_scanline == VISIBLE_LINES as u16 {
                 dispstat |= 0x2; // Set VBlank bit
-                self.irq.signal(IRQ_VBLANK);
                 self.vblank_occurred = true;
+                // Only signal VBlank IRQ if not in VBlankIntrWait
+                // (VBlankIntrWait handles VBlank specially)
+                if !self.cpu.vblank_intr_wait {
+                    self.irq.signal(IRQ_VBLANK);
+                }
                 self.dma.trigger(1, &mut self.mem, &mut self.irq);
             } else if self.current_scanline > VISIBLE_LINES as u16 && self.current_scanline < TOTAL_LINES as u16 {
                 dispstat |= 0x2; // Still in VBlank
