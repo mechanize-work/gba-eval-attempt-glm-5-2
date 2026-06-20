@@ -402,6 +402,7 @@ impl Cpu {
                 if rd == 15 {
                     self.r[15] &= !1;
                     self.cycles += 3;
+                    return;
                 } else {
                     self.cycles += 1;
                 }
@@ -419,6 +420,7 @@ impl Cpu {
                 if rd == 15 {
                     self.r[15] &= !1;
                     self.cycles += 3;
+                    return;
                 } else {
                     self.cycles += 1;
                 }
