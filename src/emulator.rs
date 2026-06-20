@@ -1,8 +1,16 @@
 // Main emulator module - ties CPU, memory, PPU, APU, etc together
+#[cfg(not(feature = "std"))]
 extern crate alloc;
+
+#[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
-use alloc::vec;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use std::boxed::Box;
+#[cfg(feature = "std")]
+use std::vec::Vec;
 
 use crate::cpu::*;
 use crate::memory::*;
@@ -40,7 +48,11 @@ pub struct Emulator {
 
 impl Emulator {
     pub fn new() -> Self {
-        let rom_data = vec![0u8; ROM_MAX_SIZE].into_boxed_slice();
+        let rom_data = {
+            let mut v = Vec::new();
+            v.resize(ROM_MAX_SIZE, 0u8);
+            v.into_boxed_slice()
+        };
         Emulator {
             cpu: Cpu::new(),
             mem: Memory::new(),
@@ -59,7 +71,10 @@ impl Emulator {
 
     pub fn load_bios(&mut self) {
         // BIOS stub is embedded
+        #[cfg(not(feature = "std"))]
         let bios = include_bytes!("../spec/gba_bios_stub.bin");
+        #[cfg(feature = "std")]
+        let bios = std::include_bytes!("../spec/gba_bios_stub.bin");
         self.mem.load_bios(bios);
     }
 
@@ -199,11 +214,11 @@ impl Emulator {
 
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
-            self.cpu.r[15] = pc + 2; // Pre-increment PC for the instruction
+            // Do NOT pre-increment PC here - the instruction handler does it
             self.cpu.execute_thumb(&mut self.mem, instr);
         } else {
             let instr = self.mem.read_word(pc);
-            self.cpu.r[15] = pc + 4; // Pre-increment PC
+            // Do NOT pre-increment PC here - the instruction handler does it
             self.cpu.execute_arm(&mut self.mem, instr);
         }
 
@@ -345,5 +360,27 @@ pub fn audio_samples() -> i32 {
 pub fn audio_rate() -> i32 {
     unsafe {
         EMU.as_ref().unwrap().apu.sample_rate as i32
+    }
+}
+
+#[cfg(feature = "std")]
+pub fn get_emu() -> &'static mut Emulator {
+    unsafe {
+        EMU.as_mut().unwrap()
+    }
+}
+
+#[cfg(feature = "std")]
+pub fn step_one() {
+    unsafe {
+        if let Some(emu) = EMU.as_mut() {
+            emu.check_and_handle_interrupts();
+            if emu.cpu.halted {
+                emu.cycle_count += 1;
+                emu.advance_hardware(1);
+            } else {
+                emu.execute_one();
+            }
+        }
     }
 }

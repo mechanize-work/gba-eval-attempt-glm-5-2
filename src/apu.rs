@@ -1,7 +1,13 @@
 // APU - Audio Processing Unit
 // Handles PSG channels (1-4) and FIFO channels (A, B)
+#[cfg(not(feature = "std"))]
 extern crate alloc;
+
+#[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
+
+#[cfg(feature = "std")]
+use std::boxed::Box;
 
 pub struct Apu {
     pub audio_buffer: Box<[i16; 4096 * 2]>, // stereo interleaved
@@ -67,7 +73,6 @@ pub struct Apu {
     pub ch4_lfsr: u32,
     pub ch4_phase: u32,
     pub ch4_clock_shift: u8,
-    pub4_prescaler: u8,
     pub ch4_width7: bool,
     pub ch4_prescaler: u8,
 
@@ -165,7 +170,6 @@ impl Apu {
             ch4_lfsr: 0,
             ch4_phase: 0,
             ch4_clock_shift: 0,
-            pub4_prescaler: 0,
             ch4_width7: false,
             ch4_prescaler: 0,
 

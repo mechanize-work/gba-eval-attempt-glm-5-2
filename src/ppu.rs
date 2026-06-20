@@ -1,8 +1,17 @@
 // PPU - Pixel Processing Unit
 // Renders GBA graphics to a framebuffer
+#[cfg(not(feature = "std"))]
 extern crate alloc;
+
+#[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use std::boxed::Box;
+#[cfg(feature = "std")]
+use std::vec::Vec;
 
 use crate::memory::*;
 

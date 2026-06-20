@@ -823,21 +823,20 @@ impl Cpu {
         let offset = (instr & 0x00FF_FFFF) as i32;
         // Sign extend
         let offset = if offset & 0x0080_0000 != 0 {
-            offset | 0xFF00_0000u32 as i32
+            offset | (0xFF00_0000u32 as i32)
         } else {
             offset
         };
         let offset = (offset as i64) * 4;
 
+        // ARM pipeline: PC = current instruction + 8
+        let pc = self.r[15].wrapping_add(8);
+
         if link {
-            self.r[14] = self.r[15] + 4; // LR = next instruction
+            self.r[14] = self.r[15].wrapping_add(4); // LR = next instruction
         }
 
-        let target = (self.r[15] as i64 + offset + 8) as u32; // +8 for pipeline
-        // Actually: PC is at current instruction + 8 when branch executes
-        // offset is relative to PC, which is current+8
-        let target = self.r[15].wrapping_add(offset as u32);
-
+        let target = pc.wrapping_add(offset as u32);
         self.r[15] = target;
         self.cycles += 3;
     }

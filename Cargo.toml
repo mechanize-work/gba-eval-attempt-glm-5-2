@@ -6,8 +6,17 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "harness"
+path = "src/bin/harness.rs"
+required-features = ["std"]
+
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[features]
+default = []
+std = []

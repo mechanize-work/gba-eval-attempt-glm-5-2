@@ -1,7 +1,15 @@
+#[cfg(not(feature = "std"))]
 extern crate alloc;
+
+#[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
-use alloc::vec;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use std::boxed::Box;
+#[cfg(feature = "std")]
+use std::vec::Vec;
 
 // GBA Memory Map:
 // 0x00000000 - 0x00003FFF  BIOS (16KB)
@@ -154,7 +162,11 @@ pub struct Memory {
 
 impl Memory {
     pub fn new() -> Self {
-        let rom = vec![0u8; ROM_MAX_SIZE].into_boxed_slice();
+        let rom = {
+            let mut v = Vec::new();
+            v.resize(ROM_MAX_SIZE, 0u8);
+            v.into_boxed_slice()
+        };
         Memory {
             bios: Box::new([0u8; BIOS_SIZE]),
             ewram: Box::new([0u8; EWRAM_SIZE]),

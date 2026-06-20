@@ -1,92 +1,85 @@
-#![no_std]
-#![no_main]
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), no_main)]
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+mod alloc_impl {
+    use core::alloc::{GlobalAlloc, Layout};
+    use core::cell::UnsafeCell;
+    use core::ptr;
 
-// Minimal global allocator for wasm32-unknown-unknown
-// Uses wasm memory.grow to allocate pages
-use core::alloc::{GlobalAlloc, Layout};
-use core::cell::UnsafeCell;
-use core::ptr;
+    const WASM_PAGE_SIZE: usize = 65536;
 
-const WASM_PAGE_SIZE: usize = 65536;
-
-struct WasmAllocator {
-    heap_ptr: UnsafeCell<usize>,
-}
-
-static ALLOC: WasmAllocator = WasmAllocator {
-    heap_ptr: UnsafeCell::new(0),
-};
-
-unsafe impl Sync for WasmAllocator {}
-
-impl WasmAllocator {
-    fn heap_ptr(&self) -> usize {
-        unsafe { *self.heap_ptr.get() }
+    struct WasmAllocator {
+        heap_ptr: UnsafeCell<usize>,
     }
 
-    fn set_heap_ptr(&self, val: usize) {
-        unsafe { *self.heap_ptr.get() = val; }
-    }
-}
+    unsafe impl Sync for WasmAllocator {}
 
-// No extern needed - use core::arch::wasm32 intrinsics
-
-unsafe impl GlobalAlloc for WasmAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let size = layout.size();
-        let align = layout.align();
-
-        let mut current = self.heap_ptr();
-        if current == 0 {
-            // Initialize: start after the data segment
-            // We'll start at page 1 to be safe
-            current = WASM_PAGE_SIZE;
-            self.set_heap_ptr(current);
+    impl WasmAllocator {
+        fn heap_ptr(&self) -> usize {
+            unsafe { *self.heap_ptr.get() }
         }
+        fn set_heap_ptr(&self, val: usize) {
+            unsafe { *self.heap_ptr.get() = val; }
+        }
+    }
 
-        // Align
-        let aligned = (current + align - 1) & !(align - 1);
-        let new_ptr = aligned + size;
+    unsafe impl GlobalAlloc for WasmAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            let size = layout.size();
+            let align = layout.align();
 
-        // Check if we need more pages
-        let current_pages = core::arch::wasm32::memory_size(0) * WASM_PAGE_SIZE;
-        if new_ptr > current_pages {
-            let needed_pages = (new_ptr - current_pages + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
-            let result = core::arch::wasm32::memory_grow(0, needed_pages);
-            if result == usize::MAX {
-                return ptr::null_mut();
+            let mut current = self.heap_ptr();
+            if current == 0 {
+                current = WASM_PAGE_SIZE;
+                self.set_heap_ptr(current);
             }
+
+            let aligned = (current + align - 1) & !(align - 1);
+            let new_ptr = aligned + size;
+
+            let current_pages = core::arch::wasm32::memory_size(0) * WASM_PAGE_SIZE;
+            if new_ptr > current_pages {
+                let needed_pages = (new_ptr - current_pages + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
+                let result = core::arch::wasm32::memory_grow(0, needed_pages);
+                if result == usize::MAX {
+                    return ptr::null_mut();
+                }
+            }
+
+            self.set_heap_ptr(new_ptr);
+            aligned as *mut u8
         }
 
-        self.set_heap_ptr(new_ptr);
-        aligned as *mut u8
+        unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
     }
 
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        // Simple bump allocator - no deallocation
-    }
+    #[global_allocator]
+    static A: WasmAllocator = WasmAllocator {
+        heap_ptr: UnsafeCell::new(0),
+    };
 }
 
-#[global_allocator]
-static A: WasmAllocator = WasmAllocator {
-    heap_ptr: UnsafeCell::new(0),
-};
+#[cfg(not(feature = "std"))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
 
-mod cpu;
-mod cpu_arm;
-mod cpu_thumb;
-mod memory;
-mod ppu;
-mod apu;
-mod dma;
-mod timer;
-mod input;
-mod interrupt;
-mod emulator;
+pub mod cpu;
+pub mod cpu_arm;
+pub mod cpu_thumb;
+pub mod memory;
+pub mod ppu;
+pub mod apu;
+pub mod dma;
+pub mod timer;
+pub mod input;
+pub mod interrupt;
+pub mod emulator;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -149,9 +142,4 @@ pub extern "C" fn emu_audio_samples() -> i32 {
 #[no_mangle]
 pub extern "C" fn emu_audio_rate() -> i32 {
     emulator::audio_rate()
-}
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
 }
