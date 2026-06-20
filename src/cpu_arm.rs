@@ -1149,22 +1149,25 @@ impl Cpu {
             }
             0x05 => {
                 // VBlankIntrWait - wait for VBlank
-                // R0: 0=non-strict (don't clear IF), 1=strict (clear IF first, wait for NEXT)
+                // R0: 0=non-strict (check if VBlank already happened), 1=strict (wait for NEXT)
                 let strict = self.r[0] != 0;
                 if strict {
                     // Clear VBlank IF, then wait for next VBlank
                     let if_val = mem.read_half(0x0400_0202);
                     mem.write_half(0x0400_0202, if_val & !1);
+                } else {
+                    // Non-strict: if VBlank IF is already set, return immediately
+                    let if_val = mem.read_half(0x0400_0202);
+                    if if_val & 1 != 0 {
+                        // VBlank already happened, clear IF and return
+                        mem.write_half(0x0400_0202, if_val & !1);
+                        self.r[15] = self.r[15].wrapping_add(pc_inc);
+                        self.cycles += 1;
+                        return;
+                    }
                 }
-                // Both strict and non-strict halt and wait for VBlank
                 self.halted = true;
                 self.vblank_intr_wait = true;
-                self.r[15] = self.r[15].wrapping_add(pc_inc);
-                self.cycles += 1;
-            }
-            0x04 => {
-                // IntrWait - wait for interrupt
-                self.halted = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 1;
             }
