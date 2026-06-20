@@ -803,12 +803,12 @@ impl Cpu {
 
             // S bit with PC load: CPSR = SPSR
             if s_bit && (reg_list & 0x8000) != 0 {
-                let mode = self.get_mode();
-                if mode != MODE_USR && mode != MODE_SYS {
+                let old_mode = self.get_mode();
+                if old_mode != MODE_USR && old_mode != MODE_SYS {
                     self.cpsr = self.get_spsr();
                     let new_mode = self.get_mode();
-                    if new_mode != mode {
-                        self.switch_mode(new_mode);
+                    if new_mode != old_mode {
+                        self.switch_mode_from(old_mode, new_mode);
                     }
                 }
             }
@@ -1008,16 +1008,9 @@ impl Cpu {
             }
             0x05 => {
                 // VBlankIntrWait - wait for NEXT VBlank
-                // On real GBA, this clears VBlank IF, waits for next VBlank,
-                // then processes the VBlank IRQ (calling user handler which
-                // increments the VBlank counter at [0x030015E0]).
-                // Since our BIOS stub doesn't implement the full IRQ dispatch,
-                // we directly increment the counter to simulate the handler.
+                // Clear VBlank IF, halt CPU, wait for VBlank to wake
                 let if_val = mem.read_half(0x0400_0202);
                 mem.write_half(0x0400_0202, if_val & !1);
-                // Increment the VBlank counter that the game uses for init timing
-                let counter = mem.read_word(0x0300_15E0);
-                mem.write_word(0x0300_15E0, counter.wrapping_add(1));
                 self.halted = true;
                 self.vblank_intr_wait = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);

@@ -263,6 +263,37 @@ impl Emulator {
         self.irq.ie = (self.mem.io[0x200] as u16) | ((self.mem.io[0x201] as u16) << 8);
         self.irq.ime = (self.mem.io[0x208] as u16) | ((self.mem.io[0x209] as u16) << 8);
 
+        // Check VBlankIntrWait FIRST - before regular IRQ check
+        // This ensures the VBlank counter gets incremented
+        if self.cpu.halted && self.cpu.vblank_intr_wait && self.vblank_occurred {
+            self.cpu.halted = false;
+            self.cpu.vblank_intr_wait = false;
+            self.vblank_occurred = false;
+            
+            // Increment the VBlank counter that the game's init code uses
+            let counter = self.mem.read_word(0x0300_15E0);
+            self.mem.write_word(0x0300_15E0, counter.wrapping_add(1));
+            
+            // Set VBlank IF bit and raise IRQ to process VBlank handler
+            let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
+            self.mem.io[0x202] = ((if_val | 1) & 0xFF) as u8;
+            self.mem.io[0x203] = (((if_val | 1) >> 8) & 0xFF) as u8;
+            self.irq.if_ = if_val | 1;
+            
+            if !self.cpu.get_flag(FLAG_I) && self.irq.ime != 0 {
+                self.irq_pending_bits = 1; // VBlank bit
+                self.irq_processing = true;
+                self.cpu.raise_irq();
+            }
+            
+            // Clear VBlank IF to prevent infinite loop
+            let if_val2 = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
+            self.mem.io[0x202] = ((if_val2 & !1) & 0xFF) as u8;
+            self.mem.io[0x203] = (((if_val2 & !1) >> 8) & 0xFF) as u8;
+            self.irq.if_ = if_val2 & !1;
+            return;
+        }
+
         if self.irq.pending() {
             self.cpu.halted = false;
             if !self.cpu.get_flag(FLAG_I) {
@@ -274,22 +305,6 @@ impl Emulator {
             if self.vblank_occurred {
                 self.cpu.halted = false;
                 self.vblank_occurred = false;
-                
-                // If this was a VBlankIntrWait, process the VBlank interrupt
-                if self.cpu.vblank_intr_wait {
-                    self.cpu.vblank_intr_wait = false;
-                    // Set VBlank IF bit
-                    let if_val = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
-                    self.mem.io[0x202] = ((if_val | 1) & 0xFF) as u8;
-                    self.mem.io[0x203] = (((if_val | 1) >> 8) & 0xFF) as u8;
-                    // Raise IRQ exception
-                    self.cpu.raise_irq();
-                    // After the IRQ handler returns, clear the VBlank IF bit
-                    // to prevent infinite re-triggering
-                    let if_val2 = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
-                    self.mem.io[0x202] = ((if_val2 & !1) & 0xFF) as u8;
-                    self.mem.io[0x203] = (((if_val2 & !1) >> 8) & 0xFF) as u8;
-                }
             }
         }
         

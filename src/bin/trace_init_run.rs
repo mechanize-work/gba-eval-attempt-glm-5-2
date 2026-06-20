@@ -10,27 +10,41 @@ fn main() {
     gba_emu::emulator::load_rom(rom_data.len());
     let emu = gba_emu::emulator::get_emu();
     
-    // Step to 226820 (just before 0x0800070C is reached)
-    for i in 0..226820 { gba_emu::emulator::step_one(); }
-    
-    // Trace 100 instructions
-    for j in 0..100u32 {
-        let pc = emu.cpu.r[15];
-        let instr = emu.mem.read_half(pc) as u32;
+    // Run 3 frames (enough for init + first VBlank)
+    for f in 0..3 {
+        gba_emu::emulator::run_frame();
         let dc = (emu.mem.io[0x00] as u16) | ((emu.mem.io[0x01] as u16) << 8);
-        let is_swi = (instr & 0xFF00) == 0xDF00;
-        let is_bl = (instr & 0xF800) == 0xF000;
-        
-        let extra = if is_swi { format!(" SWI={}", instr & 0xFF) }
-            else if is_bl { " BL_HI".to_string() } else { String::new() };
-        
-        eprintln!("[{:2}] PC=0x{:08X} 0x{:04X} DC=0x{:04X} R0={:08X} R1={:08X} R2={:08X} R3={:08X} R4={:08X}{}",
-            j, pc, instr, dc, emu.cpu.r[0], emu.cpu.r[1], emu.cpu.r[2], emu.cpu.r[3], emu.cpu.r[4], extra);
-        
-        gba_emu::emulator::step_one();
-        
-        let dc2 = (emu.mem.io[0x00] as u16) | ((emu.mem.io[0x01] as u16) << 8);
-        if dc2 != dc { eprintln!("  *** DC: 0x{:04X}->0x{:04X} ***", dc, dc2); }
-        if emu.cpu.halted { eprintln!("[{}] HALTED", j+1); break; }
+        eprintln!("Frame {}: DC=0x{:04X} halted={} PC=0x{:08X} [15E0]=0x{:08X}",
+            f, dc, emu.cpu.halted, emu.cpu.r[15], emu.mem.read_word(0x030015E0));
+    }
+    
+    // Now step until not halted, then trace
+    if emu.cpu.halted {
+        for i in 0..300000u64 {
+            gba_emu::emulator::step_one();
+            if !emu.cpu.halted {
+                eprintln!("\nWoke up at step +{}. PC=0x{:08X}", i, emu.cpu.r[15]);
+                
+                // Trace 200 instructions, tracking DISPCNT and [15E0]
+                let mut last_dc = (emu.mem.io[0x00] as u16) | ((emu.mem.io[0x01] as u16) << 8);
+                let mut last_15e0 = emu.mem.read_word(0x030015E0);
+                let mut last_vb = emu.mem.read_word(0x03003E5C);
+                
+                for j in 0..1000u32 {
+                    let pc = emu.cpu.r[15];
+                    let dc = (emu.mem.io[0x00] as u16) | ((emu.mem.io[0x01] as u16) << 8);
+                    let v15e0 = emu.mem.read_word(0x030015E0);
+                    let vb = emu.mem.read_word(0x03003E5C);
+                    
+                    if dc != last_dc { eprintln!("[{}] DC 0x{:04X}->0x{:04X} PC=0x{:08X}", j, last_dc, dc, pc); last_dc = dc; }
+                    if v15e0 != last_15e0 { eprintln!("[{}] [15E0] 0x{:08X}->0x{:08X} PC=0x{:08X}", j, last_15e0, v15e0, pc); last_15e0 = v15e0; }
+                    if vb != last_vb { eprintln!("[{}] VB_h 0x{:08X}->0x{:08X} PC=0x{:08X}", j, last_vb, vb, pc); last_vb = vb; }
+                    
+                    gba_emu::emulator::step_one();
+                    if emu.cpu.halted { eprintln!("[{}] HALTED", j+1); break; }
+                }
+                break;
+            }
+        }
     }
 }
