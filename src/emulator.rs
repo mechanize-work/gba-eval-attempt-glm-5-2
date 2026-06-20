@@ -185,16 +185,19 @@ impl Emulator {
         self.irq.ime = 0;
 
         // Set up CPU state for ROM entry
-        self.cpu.cpsr = MODE_SVC | FLAG_I | FLAG_F;
+        // BIOS exits in SYS mode (0x1F) with IRQ/FIQ enabled
+        self.cpu.cpsr = MODE_SYS;
         self.cpu.r[0] = 0;
         self.cpu.r[1] = 0;
         self.cpu.r[2] = 0;
         self.cpu.r[3] = 0;
         self.cpu.r[12] = 0;
-        self.cpu.r[13] = 0x03007F00; // SVC SP
+        self.cpu.r[13] = 0x03007F00; // SYS SP
         self.cpu.r[14] = 0x08000000; // LR
         self.cpu.r[15] = 0x08000000; // PC -> ROM entry
-        self.cpu.svc_r13 = 0x03007F00;
+        self.cpu.usr_r13 = 0x03007F00;
+        self.cpu.usr_r14 = 0x08000000;
+        self.cpu.svc_r13 = 0x03007FE0;
         self.cpu.irq_r13 = 0x03007FA0;
         self.cpu.fiq_r13 = 0x03007F80;
         self.cpu.abt_r13 = 0x03007F60;
