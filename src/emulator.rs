@@ -119,8 +119,9 @@ impl Emulator {
         // 6. Set DISPCNT = 0x0080 (forced blank)
         // 7. Jump to ROM at 0x08000000
 
-        // Clear IWRAM (real BIOS does this with CpuFastSet)
+        // Clear IWRAM and EWRAM (real BIOS does this with CpuFastSet)
         for b in self.mem.iwram.iter_mut() { *b = 0; }
+        for b in self.mem.ewram.iter_mut() { *b = 0; }
 
         // Copy BIOS interrupt vectors to IWRAM
         for i in 0..0x40 {

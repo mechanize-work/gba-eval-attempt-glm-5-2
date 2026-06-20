@@ -168,8 +168,14 @@ impl Cpu {
     }
 
     fn exec_thumb_add_sub(&mut self, instr: u16) {
-        let is_imm = (instr >> 10) & 1 != 0;
-        let op = (instr >> 8) & 0x3;
+        // THUMB.2: 00011 OP Rn/Rm Rs Rd
+        // bits 10-9 = opcode:
+        //   0: ADD Rd, Rs, Rn (register)
+        //   1: SUB Rd, Rs, Rn (register)
+        //   2: ADD Rd, Rs, #imm3 (immediate)
+        //   3: SUB Rd, Rs, #imm3 (immediate)
+        let op = (instr >> 9) & 0x3;
+        let is_imm = op >= 2;
         let rs = ((instr >> 3) & 0x7) as usize;
         let rd = (instr & 0x7) as usize;
 
@@ -183,19 +189,11 @@ impl Cpu {
         let b = operand;
 
         let (result, carry, overflow) = match op {
-            0 => { // ADD
+            0 | 2 => { // ADD
                 Cpu::add_with_carry(a, b, false)
             }
-            1 => { // SUB
+            1 | 3 => { // SUB
                 Cpu::add_with_carry(a, !b, true)
-            }
-            2 => { // ADD with carry
-                let cin = self.get_flag(FLAG_C);
-                Cpu::add_with_carry(a, b, cin)
-            }
-            3 => { // SUB with carry
-                let cin = self.get_flag(FLAG_C);
-                Cpu::add_with_carry(a, !b, cin)
             }
             _ => (0, false, false)
         };
