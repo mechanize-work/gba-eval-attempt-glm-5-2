@@ -87,6 +87,17 @@ impl Emulator {
         self.timer.reset();
         self.irq.reset();
         self.load_bios();
+
+        // Set initial display state to match real GBA BIOS
+        // DISPCNT = 0x0080 (forced blank = white screen)
+        self.mem.io[0x00] = 0x80;
+        self.mem.io[0x01] = 0x00;
+        // Palette[0] = white (0x7FFF)
+        self.mem.palette[0] = 0xFF;
+        self.mem.palette[1] = 0x7F;
+        // Sound bias = 0x200
+        self.mem.io[0x88] = 0x00;
+        self.mem.io[0x89] = 0x02;
         self.cycle_count = 0;
         self.current_scanline = 0;
         self.cycle_in_scanline = 0;

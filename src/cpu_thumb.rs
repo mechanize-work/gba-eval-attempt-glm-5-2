@@ -38,7 +38,7 @@ impl Cpu {
             }
             0x12..=0x13 => {
                 // THUMB.6: Load from PC-relative address
-                self.exec_thumb_pc_rel(instr);
+                self.exec_thumb_pc_rel(instr, mem);
             }
             0x14..=0x17 => {
                 // THUMB.7: Load/store with register offset
@@ -112,9 +112,10 @@ impl Cpu {
                 self.exec_thumb_long_branch(instr);
             }
             _ => {
-                // SWI: 0xDF00-0xDFFF is handled by bits 15-8 = 0xDF
+                // SWI: 0xDF00-0xDFFF
                 if (instr & 0xFF00) == 0xDF00 {
-                    self.exception(EXC_SWI, MODE_SVC, true, false);
+                    let swi_num = (instr & 0xFF) as u32;
+                    self.do_swi(mem, swi_num);
                     return;
                 }
                 self.r[15] = self.r[15].wrapping_add(2);
@@ -433,11 +434,12 @@ impl Cpu {
         self.r[15] = self.r[15].wrapping_add(2);
     }
 
-    fn exec_thumb_pc_rel(&mut self, instr: u16) {
+    fn exec_thumb_pc_rel(&mut self, instr: u16, mem: &mut Memory) {
         let rd = ((instr >> 8) & 0x7) as usize;
         let imm = ((instr & 0xFF) as u32) << 2;
         // PC is current instruction + 4, aligned to 4
-        self.r[rd] = (self.r[15] & !3).wrapping_add(4).wrapping_add(imm);
+        let addr = (self.r[15] & !3).wrapping_add(4).wrapping_add(imm);
+        self.r[rd] = mem.read_word(addr);
         self.r[15] = self.r[15].wrapping_add(2);
         self.cycles += 1;
     }
@@ -664,8 +666,9 @@ impl Cpu {
     fn exec_thumb_branch_cond(&mut self, instr: u16) {
         let cond = ((instr >> 8) & 0xF) as u32;
         if cond == 0xF {
-            // SWI
-            self.exception(EXC_SWI, MODE_SVC, true, false);
+            // This shouldn't happen (SWI is 0xDFxx), but just advance PC
+            self.r[15] = self.r[15].wrapping_add(2);
+            self.cycles += 1;
             return;
         }
 

@@ -3,6 +3,17 @@ use crate::cpu::*;
 use crate::memory::Memory;
 use core::cell::RefCell;
 
+fn integer_sqrt(val: u32) -> u32 {
+    if val == 0 { return 0; }
+    let mut x = val;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + val / x) / 2;
+    }
+    x
+}
+
 impl Cpu {
     pub fn execute_arm(&mut self, mem: &mut Memory, instr: u32) {
         let cond = (instr >> 28) & 0xF;
@@ -936,7 +947,174 @@ impl Cpu {
         }
     }
 
-    fn exec_arm_swi(&mut self, _mem: &mut Memory, _instr: u32) {
-        self.exception(EXC_SWI, MODE_SVC, true, false);
+    fn exec_arm_swi(&mut self, mem: &mut Memory, instr: u32) {
+        // ARM SWI: number is in bits 23-0
+        // But on GBA, only bits 7-0 matter (24-bit comment field, lower 8 = function)
+        let swi_num = (instr >> 0) & 0xFF;
+        self.do_swi(mem, swi_num);
+    }
+
+    /// Implement GBA BIOS SWI functions directly instead of running the BIOS stub handler.
+    /// Only intercept SWI calls from ROM code (0x08000000+), not from BIOS itself.
+    pub fn do_swi(&mut self, mem: &mut Memory, swi_num: u32) {
+        // If SWI is called from BIOS (PC < 0x08000000), use the BIOS stub handler
+        let caller_pc = self.r[15];
+        if caller_pc < 0x0800_0000 {
+            // BIOS internal SWI - use exception handler
+            self.exception(EXC_SWI, MODE_SVC, true, false);
+            return;
+        }
+
+        // Game SWI - intercept and implement directly
+        // Determine PC increment based on current mode
+        let pc_inc: u32 = if self.is_thumb() { 2 } else { 4 };
+
+        match swi_num {
+            0x00 => {
+                // SoftReset - jump to ROM entry
+                // R0 selects: 0=clear EWRAM, 1=don't clear
+                // Just jump to 0x08000000
+                self.r[15] = 0x08000000;
+                self.cpsr &= !FLAG_T;
+                self.cycles += 1;
+            }
+            0x01 => {
+                // RegRamReset - reset registers and RAM
+                // R0 = mask: bit 0=EWRAM, 1=IWRAM, 2=palette, 3=VRAM, 4=OAM
+                // bit 5=IO registers (except DISPCNT etc), 6=sound registers
+                // bit 7=other registers
+                // For simplicity, just advance PC
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 1;
+            }
+            0x02 => {
+                // Halt - halt CPU until interrupt
+                self.halted = true;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 1;
+            }
+            0x03 => {
+                // Stop (Stop/Sleep)
+                self.halted = true;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 1;
+            }
+            0x04 => {
+                // IntrWait - wait for interrupt
+                // R0: 0=wait for any, 1=wait for specific (R1=IE, R2=IF)
+                self.halted = true;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 1;
+            }
+            0x05 => {
+                // VBlankIntrWait - wait for VBlank interrupt
+                self.halted = true;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 1;
+            }
+            0x06 => {
+                // Div: R0 / R1 -> R0=quotient, R1=remainder, R3=abs(quotient)
+                let a = self.r[0] as i32;
+                let b = self.r[1] as i32;
+                if b != 0 {
+                    self.r[0] = (a / b) as u32;
+                    self.r[1] = (a % b) as u32;
+                    self.r[3] = (a / b).abs() as u32;
+                }
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 10;
+            }
+            0x07 => {
+                // DivArm: R1 / R0 (reversed operand order)
+                let a = self.r[1] as i32;
+                let b = self.r[0] as i32;
+                if b != 0 {
+                    self.r[0] = (a / b) as u32;
+                    self.r[1] = (a % b) as u32;
+                    self.r[3] = (a / b).abs() as u32;
+                }
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 10;
+            }
+            0x08 => {
+                // Sqrt: R0 -> R0
+                let val = self.r[0];
+                self.r[0] = integer_sqrt(val);
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 10;
+            }
+            0x0B => {
+                // CpuSet: copy from R0 to R1, R2 = count (lower 20 bits) | options
+                // R2 bit 24: 0=16-bit, 1=32-bit
+                // R2 bit 26: 0=increment, 1=fixed source
+                let src = self.r[0];
+                let dst = self.r[1];
+                let count = self.r[2] & 0x1FFFFF;
+                let is_32bit = self.r[2] & 0x0400_0000 != 0;
+                let fixed_src = self.r[2] & 0x0800_0000 != 0;
+
+                if is_32bit {
+                    let mut s = src;
+                    let mut d = dst;
+                    for _ in 0..count {
+                        let val = mem.read_word(s);
+                        mem.write_word(d, val);
+                        d = d.wrapping_add(4);
+                        if !fixed_src { s = s.wrapping_add(4); }
+                    }
+                } else {
+                    let mut s = src;
+                    let mut d = dst;
+                    for _ in 0..count {
+                        let val = mem.read_half(s);
+                        mem.write_half(d, val);
+                        d = d.wrapping_add(2);
+                        if !fixed_src { s = s.wrapping_add(2); }
+                    }
+                }
+                self.r[0] = src.wrapping_add(if fixed_src { 0 } else { if is_32bit { count * 4 } else { count * 2 } });
+                self.r[1] = dst.wrapping_add(if is_32bit { count * 4 } else { count * 2 });
+                self.r[2] = 0;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += count as u64 + 5;
+            }
+            0x0C => {
+                // CpuFastSet: fast copy from R0 to R1, R2 = count (in words, lower 22 bits)
+                // Always 32-bit, always 0x20 byte chunks
+                let src = self.r[0];
+                let dst = self.r[1];
+                let mut count = self.r[2] & 0x0003_FFFF; // lower 22 bits
+                let mut s = src;
+                let mut d = dst;
+
+                // CpuFastSet copies in chunks of 8 words (32 bytes)
+                while count >= 8 {
+                    for _ in 0..8 {
+                        let val = mem.read_word(s);
+                        mem.write_word(d, val);
+                        s = s.wrapping_add(4);
+                        d = d.wrapping_add(4);
+                    }
+                    count -= 8;
+                }
+                // Handle remaining words
+                for _ in 0..count {
+                    let val = mem.read_word(s);
+                    mem.write_word(d, val);
+                    s = s.wrapping_add(4);
+                    d = d.wrapping_add(4);
+                }
+                self.r[0] = src;
+                self.r[1] = dst;
+                self.r[2] = 0;
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 5;
+            }
+            _ => {
+                // Unknown SWI - just advance PC
+                self.r[15] = self.r[15].wrapping_add(pc_inc);
+                self.cycles += 1;
+            }
+        }
     }
 }
