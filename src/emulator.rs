@@ -49,6 +49,7 @@ pub struct Emulator {
     pub irq_processing: bool,
     pub irq_pending_bits: u16,
     pub bad_pc_warned: bool,
+    pub bad_pc_warned2: bool,
     pub frame_count: u32,
     pub last_pc: u32,
     pub last_instr: u32,
@@ -84,6 +85,7 @@ impl Emulator {
             irq_processing: false,
             irq_pending_bits: 0,
             bad_pc_warned: false,
+            bad_pc_warned2: false,
             frame_count: 0,
             last_pc: 0,
             last_instr: 0,
@@ -250,13 +252,24 @@ impl Emulator {
         self.cycle_count = self.cycle_count.wrapping_sub(CYCLES_PER_FRAME);
 
         // Render the frame using current display state
-        // Debug: check palette and VRAM
+        // Debug
+        let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
         let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
         let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
-        let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
-        let bg0cnt = (self.mem.io[0x08] as u16) | ((self.mem.io[0x09] as u16) << 8);
-        eprintln!("Frame done: dispcnt={:04X} bg0cnt={:04X} pal_nonzero={} vram_nonzero={} instrs={} halted={} pc={:08X} cpsr={:08X}",
-            dispcnt, bg0cnt, pal_nonzero, vram_nonzero, instr_count, halt_count, self.cpu.r[15], self.cpu.cpsr);
+        eprintln!("Frame {}: dispcnt={:04X} pal={} vram={} instrs={} pc={:08X}",
+            self.frame_count, dispcnt, pal_nonzero, vram_nonzero, instr_count, self.cpu.r[15]);
+
+        // Dump IRQ handler code on first stuck frame
+        if self.frame_count == 0 {
+            eprintln!("--- IWRAM dump (IRQ handler area) ---");
+            for i in 0..200 {
+                let addr = 0x03000890 + i * 4;
+                let v = self.mem.read_word(addr);
+                if v != 0 {
+                    eprintln!("  {:08X}: {:08X}", addr, v);
+                }
+            }
+        }
         self.ppu.render_frame(&self.mem);
         self.frame_count += 1;
     }
@@ -368,33 +381,6 @@ impl Emulator {
         // Read instruction at PC
         let pc = self.cpu.r[15];
 
-        // Debug: track IRQ SP around the critical section
-        if (pc == 0x03000970 || pc == 0x03000974 || pc == 0x03000984 || pc == 0x030009AC || pc == 0x030009B0 || pc == 0x030009B4) && !self.bad_pc_warned {
-            eprintln!("DEBUG: pc={:08X} cpsr={:08X} r13={:08X} r14={:08X} r2={:08X} irq_r13={:08X} usr_r13={:08X} spsr={:08X}",
-                pc, self.cpu.cpsr, self.cpu.r[13], self.cpu.r[14], self.cpu.r[2], self.cpu.irq_r13, self.cpu.usr_r13, self.cpu.get_spsr());
-            if pc == 0x030009B0 {
-                // Dump what's on the stack before LDMFD
-                let sp = self.cpu.r[13];
-                for i in 0..6 {
-                    let v = self.mem.read_word(sp.wrapping_add(i * 4));
-                    eprintln!("  [SP+{:02X}] = {:08X}", i*4, v);
-                }
-            }
-        }
-
-        // Debug: catch when PC goes to bad area
-        if pc >= 0x0700_0000 && pc < 0x0800_0000 && !self.bad_pc_warned {
-            eprintln!("BAD PC: {:08X} cpsr={:08X} r14={:08X}", pc, self.cpu.cpsr, self.cpu.r[14]);
-            // Check IRQ stack
-            let irq_sp = self.cpu.irq_r13;
-            eprintln!("  IRQ SP={:08X}", irq_sp);
-            // Read what's on the IRQ stack
-            for i in 0..8 {
-                let v = self.mem.read_word(irq_sp.wrapping_add(i * 4));
-                eprintln!("  [SP+{:02X}] = {:08X}", i*4, v);
-            }
-            self.bad_pc_warned = true;
-        }
         // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
         // This happens because our BIOS stub doesn't implement all functions
         if pc < 0x4000 {

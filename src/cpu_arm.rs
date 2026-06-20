@@ -34,17 +34,23 @@ impl Cpu {
                 let bit24 = (instr >> 24) & 1;
                 
                 // Check for PSR transfer (MRS/MSR)
-                // MSR: 0001 0r10 1111 ffff 0000 0000 mmmm  (bits 7-4 = 0000, bit 21=1)
-                // MRS: 0001 0r00 1111 dddd 0000 0000 0000  (bits 7-4 = 0000, bit 21=0)
-                // Use precise mask to distinguish from BX (bits 7-4 = 0001)
-                if (instr & 0x0FB0_FFF0) == 0x0120_F000 || (instr & 0x0FB0_FFF0) == 0x0100_F000 {
-                    // PSR transfer (MRS or MSR)
+                // MRS: cond 0001 0r00 1111 rd 00000000 0000
+                // MSR reg: cond 0001 0r10 1111 mask 0000 0000 Rm
+                // Fixed bits: 0001 0xx0 1111 xxxx 0000 xxxx 0000
+                // Mask: 0x0FB0_0FF0, value: 0x0100_0000 (covers both MRS and MSR-reg)
+                // MRS/MSR with register: bits 27:24=0001, bit 23=0, bit 21 distinguishes MRS(0)/MSR(1), bits 11:8=0000, bits 7:4=0000
+                // Mask out bit 22 (CPSR/SPSR select) and bits 19:12 (Rd/mask) 
+                if (instr & 0x0F90_0FF0) == 0x0100_0000 {
+                    // PSR transfer (MRS or MSR with register)
                     self.exec_arm_psr_transfer(mem, instr);
                 } else if (instr & 0x0190_F000) == 0x0100_F000 {
                     // BX / SWP / etc (misc) — bit 24=1 and bits 7-4=1111
                     self.exec_arm_misc(mem, instr);
+                } else if (instr & 0x0000_0090) == 0x0000_0090 && (instr & 0x0000_0060) != 0x0000_0000 {
+                    // Halfword/signed load/store (bit 7=1, bit 4=1, bits 6:5 != 00)
+                    self.exec_arm_halfword_transfer(mem, instr);
                 } else if (instr & 0x0000_00F0) == 0x0000_0090 {
-                    // Multiply / swap (bit 7=1, bit 4=1)
+                    // Multiply / swap (bit 7=1, bit 4=1, bits 6:5 = 00)
                     self.exec_arm_multiply(mem, instr);
                 } else if (instr & 0x0120_0000) == 0x0020_0000 {
                     // Immediate operand (bit 25=1... but op=0 means bit 25=0)
@@ -56,9 +62,11 @@ impl Cpu {
                 }
             }
             0x1 => {
-                // Data processing - immediate (or PSR transfer)
-                if (instr & 0x0190_F000) == 0x0120_F000 {
-                    // MSR/MRS (PSR transfer)
+                // Data processing - immediate (or MSR with immediate)
+                // MSR immediate: cond 001 1 0 r 10 1111 rotate imm8
+                // Check: bit 24=1, bit 23=0, bit 21=1, bit 20=0, bits 19:16=1111
+                if (instr & 0x019F_0000) == 0x012F_0000 {
+                    // MSR with immediate
                     self.exec_arm_psr_transfer(mem, instr);
                 } else {
                     self.exec_arm_data_processing(mem, instr, true);
@@ -435,18 +443,16 @@ impl Cpu {
             }
             0x8 => { // TST
                 result = op1 & op2;
-                let (r, c) = self.barrel_shift_result(op2, shift_carry);
-                self.set_nz(r);
-                self.set_flag(FLAG_C, c);
+                self.set_nz(result);
+                self.set_flag(FLAG_C, shift_carry);
                 self.r[15] = self.r[15].wrapping_add(4);
                 self.cycles += 1;
                 return;
             }
             0x9 => { // TEQ
                 result = op1 ^ op2;
-                let (r, c) = self.barrel_shift_result(op2, shift_carry);
-                self.set_nz(r);
-                self.set_flag(FLAG_C, c);
+                self.set_nz(result);
+                self.set_flag(FLAG_C, shift_carry);
                 self.r[15] = self.r[15].wrapping_add(4);
                 self.cycles += 1;
                 return;
@@ -673,6 +679,87 @@ impl Cpu {
             } else {
                 mem.write_word(effective_addr & !3, val);
             }
+            self.cycles += 2;
+        }
+
+        // Write-back
+        if !pre || write_back {
+            if !is_load || rd != rn {
+                self.r[rn] = addr;
+            }
+        }
+
+        self.r[15] = self.r[15].wrapping_add(4);
+    }
+
+    fn exec_arm_halfword_transfer(&mut self, mem: &mut Memory, instr: u32) {
+        // LDRH/STRH/LDRSH/LDRSB
+        // Encoding: cond 000PUBWL Rn Rd offset 1SH1
+        // bits 7:4 determine type:
+        //   1011 = LDRH (unsigned halfword)
+        //   1101 = LDRSB (signed byte)
+        //   1110 = STRH
+        //   1111 = LDRSH (signed halfword)
+        let is_load = (instr >> 20) & 1 != 0;
+        let write_back = (instr >> 21) & 1 != 0;
+        let up = (instr >> 23) & 1 != 0;
+        let pre = (instr >> 24) & 1 != 0;
+        let rn = ((instr >> 16) & 0xF) as usize;
+        let rd = ((instr >> 12) & 0xF) as usize;
+        let sh = (instr >> 5) & 0x3; // bits 6:5
+
+        // Compute offset
+        let offset = if (instr >> 22) & 1 != 0 {
+            // Immediate offset: split across bits 11:8 and 3:0
+            (((instr >> 8) & 0xF) << 4) | (instr & 0xF)
+        } else {
+            // Register offset
+            let rm = (instr & 0xF) as usize;
+            if rm == 15 { self.r[15] + 8 } else { self.r[rm] }
+        };
+
+        let base = if rn == 15 { self.r[15] + 8 } else { self.r[rn] };
+
+        let addr = if up {
+            base.wrapping_add(offset)
+        } else {
+            base.wrapping_sub(offset)
+        };
+
+        let effective_addr = if pre { addr } else { base };
+
+        if is_load {
+            let val: u32;
+            match sh {
+                0b01 => { // LDRH (unsigned halfword)
+                    val = mem.read_half(effective_addr) as u32;
+                }
+                0b10 => { // LDRSB (signed byte)
+                    let b = mem.read_byte(effective_addr) as i8 as i32 as u32;
+                    val = b;
+                }
+                0b11 => { // LDRSH (signed halfword)
+                    let h = mem.read_half(effective_addr) as i16 as i32 as u32;
+                    val = h;
+                }
+                _ => { val = 0; }
+            }
+            if rd == 15 {
+                self.r[15] = val & !1;
+                if val & 1 != 0 {
+                    self.cpsr |= FLAG_T;
+                } else {
+                    self.r[15] &= !3;
+                }
+                self.cycles += 3;
+            } else {
+                self.r[rd] = val;
+                self.cycles += 2;
+            }
+        } else {
+            // STRH
+            let val = if rd == 15 { self.r[15] + 12 } else { self.r[rd] };
+            mem.write_half(effective_addr, val as u16);
             self.cycles += 2;
         }
 
