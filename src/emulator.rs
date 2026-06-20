@@ -176,6 +176,14 @@ impl Emulator {
         // Set POSTFLG = 1
         self.mem.io[0x300] = 0x01;
 
+        // Clear IE, IF, IME (BIOS initializes these to 0)
+        self.mem.io[0x200] = 0; self.mem.io[0x201] = 0; // IE
+        self.mem.io[0x202] = 0; self.mem.io[0x203] = 0; // IF
+        self.mem.io[0x208] = 0; self.mem.io[0x209] = 0; // IME
+        self.irq.ie = 0;
+        self.irq.if_ = 0;
+        self.irq.ime = 0;
+
         // Set up CPU state for ROM entry
         self.cpu.cpsr = MODE_SVC | FLAG_I | FLAG_F;
         self.cpu.r[0] = 0;
