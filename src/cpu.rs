@@ -415,7 +415,7 @@ impl Cpu {
             0xC => !self.get_flag(FLAG_Z) && (self.get_flag(FLAG_N) == self.get_flag(FLAG_V)), // GT
             0xD => self.get_flag(FLAG_Z) || (self.get_flag(FLAG_N) != self.get_flag(FLAG_V)),  // LE
             0xE => true,                            // AL (always)
-            0xF => true,                            // NV (never in ARMv4, always in ARMv5+)
+            0xF => false,                           // NV (never in ARMv4T)
             _ => true,
         }
     }
