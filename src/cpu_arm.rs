@@ -1357,7 +1357,7 @@ impl Cpu {
                     // Use integer sine/cosine with 14-bit precision
                     // sin_table[i] = round(sin(i/65536 * 2*pi) * 16384) for i in 0..65536
                     // Simplified: use 8-bit lookup
-                    let angle_idx = (theta >> 8) & 0xFF; // 0-255 = 0 to 2*pi
+                    let angle_idx = ((theta >> 8) & 0xFF) as u32; // 0-255 = 0 to 2*pi
                     let cos_val = cos_table(angle_idx);
                     let sin_val = sin_table(angle_idx);
                     
