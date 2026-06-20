@@ -69,16 +69,21 @@ impl Cpu {
                 // THUMB.12: Load address (PC or SP relative)
                 self.exec_thumb_load_address(instr);
             }
-            0x2C..=0x2D => {
-                // THUMB.13: Add offset to stack pointer
+            0x2C => {
+                // THUMB.13: Add offset to stack pointer (1011 0000 ...)
                 self.exec_thumb_add_sp(instr);
             }
-            0x2E => {
-                // THUMB.14: Push registers
+            0x2D => {
+                // THUMB.14: Push registers (1011 010x ...)
                 self.exec_thumb_push(mem, instr);
             }
+            0x2E => {
+                // Undefined/reserved on ARMv4T
+                self.r[15] = self.r[15].wrapping_add(2);
+                self.cycles += 1;
+            }
             0x2F => {
-                // THUMB.14: Pop registers
+                // THUMB.14: Pop registers (1011 110x ...)
                 self.exec_thumb_pop(mem, instr);
             }
             0x30..=0x33 => {
