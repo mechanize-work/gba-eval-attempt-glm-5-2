@@ -242,6 +242,21 @@ impl Emulator {
     }
 
     pub fn run_frame(&mut self) {
+        // Simulate BIOS execution time (~768000 cycles = ~2.73 frames)
+        // The real GBA BIOS takes this long before jumping to ROM.
+        // This shifts all game timing to match the oracle 'run' mode.
+        if self.frame_count == 0 && self.cycle_count == 0 {
+            let bios_cycles = 768000u32;
+            // Advance hardware for BIOS time
+            let mut remaining = bios_cycles;
+            while remaining > 0 {
+                let chunk = remaining.min(CYCLES_PER_FRAME);
+                self.advance_hardware(chunk);
+                remaining -= chunk;
+            }
+            self.cycle_count = bios_cycles % CYCLES_PER_FRAME;
+        }
+
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
         let mut halt_count: u64 = 0;
