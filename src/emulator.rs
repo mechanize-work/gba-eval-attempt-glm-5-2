@@ -330,8 +330,9 @@ impl Emulator {
             self.cpu.vblank_intr_wait = false;
             self.vblank_occurred = false;
             
-            // Raise IRQ if possible
-            if !self.cpu.get_flag(FLAG_I) && self.irq.ime != 0 && (self.irq.ie & 1) != 0 {
+            // Raise IRQ - force it even if IME=0, since VBlankIntrWait
+            // should process the VBlank interrupt regardless
+            if !self.cpu.get_flag(FLAG_I) && (self.irq.ie & 1) != 0 {
                 self.irq_pending_bits = 1; // VBlank bit
                 self.irq_processing = true;
                 self.cpu.raise_irq();
