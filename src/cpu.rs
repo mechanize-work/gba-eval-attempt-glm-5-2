@@ -315,7 +315,18 @@ impl Cpu {
         // Set LR
         // For ARM: LR = PC + 4 (already in pipeline state)
         // For THUMB: LR = PC
-        self.r[14] = ret_addr.wrapping_sub(if thumb { 0 } else { 4 });
+        // For ARM: LR = PC - 4 (so SUBS PC, LR, #4 returns to next instruction)
+        // For THUMB: LR = PC + 4 (so SUBS PC, LR, #4 returns to next instruction)
+        // PC in THUMB = current_instruction + 4 (pipeline)
+        // PC in ARM = current_instruction + 8 (pipeline)
+        // ret_addr = self.r[15] which is current instruction address (before pipeline adjustment)
+        // For THUMB: LR should be current + 8, ret_addr = current, so LR = ret_addr + 8
+        // For ARM: LR should be current + 4, ret_addr = current, so LR = ret_addr + 4
+        if thumb {
+            self.r[14] = ret_addr.wrapping_add(8);
+        } else {
+            self.r[14] = ret_addr.wrapping_add(4);
+        }
 
         // Switch to ARM mode
         self.cpsr &= !FLAG_T;
