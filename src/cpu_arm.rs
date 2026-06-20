@@ -1339,15 +1339,11 @@ impl Cpu {
             }
             0x0D => {
                 // ObjAffineSet: calculate affine matrix from sprite data
-                // R0 = source (sx, sy, theta as halfwords)
-                // R1 = dest (PA, PB, PC, PD as halfwords)
-                // R2 = number of entries
-                // R3 = source offset per entry (2=half, 4=full, 8=double)
                 let src = self.r[0];
                 let dst = self.r[1];
                 let count = self.r[2] as usize;
                 let src_off = self.r[3] as u32;
-                let dst_off: u32 = 8; // 4 halfwords = 8 bytes per entry
+                let dst_off: u32 = 8;
                 
                 for i in 0..count {
                     let s = src.wrapping_add(i as u32 * src_off);
@@ -1355,24 +1351,28 @@ impl Cpu {
                     
                     let sx = mem.read_half(s) as i16 as i32;
                     let sy = mem.read_half(s.wrapping_add(2)) as i16 as i32;
-                    let theta = mem.read_half(s.wrapping_add(4)) as u16 as i32; // 0-65535 = 0-2pi
+                    let theta = mem.read_half(s.wrapping_add(4)) as u16 as i32;
                     
-                    // Convert theta to radians: theta / 65536 * 2 * PI
-                    let rad = (theta as f64 / 65536.0) * 2.0 * 3.14159265358979;
-                    let cos = approx_cos(rad);
-                    let sin = approx_sin(rad);
+                    // theta: 0-65535 = 0 to 2*pi
+                    // Use integer sine/cosine with 14-bit precision
+                    // sin_table[i] = round(sin(i/65536 * 2*pi) * 16384) for i in 0..65536
+                    // Simplified: use 8-bit lookup
+                    let angle_idx = (theta >> 8) & 0xFF; // 0-255 = 0 to 2*pi
+                    let cos_val = cos_table(angle_idx);
+                    let sin_val = sin_table(angle_idx);
                     
-                    // PA = sx * cos, PB = -sx * sin, PC = sy * sin, PD = sy * cos
-                    // Values are 8.8 fixed point
-                    let pa = ((sx as f64) * cos * 256.0) as i16 as u16;
-                    let pb = ((sx as f64) * (-sin) * 256.0) as i16 as u16;
-                    let pc = ((sy as f64) * sin * 256.0) as i16 as u16;
-                    let pd = ((sy as f64) * cos * 256.0) as i16 as u16;
+                    // PA = (sx * cos) >> 8, PB = -(sx * sin) >> 8
+                    // PC = (sy * sin) >> 8, PD = (sy * cos) >> 8
+                    // cos_val/sin_val are in 8.8 fixed point (0-256 = 0-1)
+                    let pa = (sx * cos_val) >> 8;
+                    let pb = (sx * (-sin_val)) >> 8;
+                    let pc = (sy * sin_val) >> 8;
+                    let pd = (sy * cos_val) >> 8;
                     
-                    mem.write_half(d, pa);
-                    mem.write_half(d.wrapping_add(2), pb);
-                    mem.write_half(d.wrapping_add(4), pc);
-                    mem.write_half(d.wrapping_add(6), pd);
+                    mem.write_half(d, pa as i16 as u16);
+                    mem.write_half(d.wrapping_add(2), pb as i16 as u16);
+                    mem.write_half(d.wrapping_add(4), pc as i16 as u16);
+                    mem.write_half(d.wrapping_add(6), pd as i16 as u16);
                 }
                 
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
