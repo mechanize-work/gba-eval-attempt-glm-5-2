@@ -154,10 +154,10 @@ impl Ppu {
         let bg_en = (dispcnt >> 8) & 0xF;
         let obj_en = (dispcnt >> 12) & 1;
 
-        let forcelen = dispcnt & 0x4000 != 0;
+        let forcelen = dispcnt & 0x0080 != 0;
         if forcelen {
             for i in 0..FB_SIZE {
-                self.framebuffer[i] = 0xFF000000;
+                self.framebuffer[i] = 0xFFFFFFFF; // White
             }
             return;
         }
