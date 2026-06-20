@@ -196,6 +196,18 @@ impl Emulator {
         }
         
         // Ensure post-boot state is correct
+        // Copy BIOS interrupt vectors to IWRAM (real BIOS does this)
+        for i in 0..0x40 {
+            self.mem.iwram[i] = self.mem.bios[i];
+        }
+        
+        // Set up default IRQ handler at 0x03007FFC
+        let irq_handler = 0x00000128u32;
+        self.mem.iwram[0x7FFC] = (irq_handler & 0xFF) as u8;
+        self.mem.iwram[0x7FFD] = ((irq_handler >> 8) & 0xFF) as u8;
+        self.mem.iwram[0x7FFE] = ((irq_handler >> 16) & 0xFF) as u8;
+        self.mem.iwram[0x7FFF] = ((irq_handler >> 24) & 0xFF) as u8;
+        
         // Set POSTFLG = 1
         self.mem.io[0x300] = 0x01;
         
