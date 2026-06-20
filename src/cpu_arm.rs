@@ -957,14 +957,33 @@ impl Cpu {
         self.cycles += 3;
     }
 
-    fn exec_arm_multiply(&mut self, _mem: &mut Memory, instr: u32) {
-        // Multiply instructions: MUL, MLA, UMULL, UMLAL, SMULL, SMLAL
-        // SWP, SWPB
+    fn exec_arm_multiply(&mut self, mem: &mut Memory, instr: u32) {
         let bit24 = (instr >> 24) & 1;
         let bit23 = (instr >> 23) & 1;
-        let bit22 = (instr >> 22) & 1; // SWP: B bit
-        let bit21 = (instr >> 21) & 1; // Accumulate
-        let bit20 = (instr >> 20) & 1; // Set flags
+        let bit22 = (instr >> 22) & 1;
+        let bit21 = (instr >> 21) & 1;
+        let bit20 = (instr >> 20) & 1;
+
+        // SWP/SWPB: bit 24=1, bit 23=0, bit 21=0, bits 11:8=0000
+        // (distinguishes from UMULL which has bits 11:8=Rs)
+        if bit24 == 1 && bit23 == 0 && bit21 == 0 && ((instr >> 8) & 0xF) == 0 {
+            let rn = ((instr >> 16) & 0xF) as usize;
+            let rd = ((instr >> 12) & 0xF) as usize;
+            let rm = (instr & 0xF) as usize;
+            let addr = self.r[rn];
+            if bit22 != 0 {
+                let val = mem.read_byte(addr);
+                mem.write_byte(addr, self.r[rm] as u8);
+                self.r[rd] = val as u32;
+            } else {
+                let val = mem.read_word(addr);
+                mem.write_word(addr, self.r[rm]);
+                self.r[rd] = val;
+            }
+            self.r[15] = self.r[15].wrapping_add(4);
+            self.cycles += 4;
+            return;
+        }
 
         if bit24 == 0 && bit23 == 0 {
             // MUL or MLA
