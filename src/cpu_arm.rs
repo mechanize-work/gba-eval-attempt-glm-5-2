@@ -1184,27 +1184,16 @@ impl Cpu {
             }
             0x05 => {
                 // VBlankIntrWait - wait for VBlank
-                // The BIOS sets IME=1 and clears I flag before waiting
+                // The BIOS sets IME=1, clears I flag, and ALWAYS uses strict mode
+                // (BIOS code at 0x023C overwrites R0 with 1, ignoring caller's value)
                 mem.write_byte(0x0400_0208, 1); // IME = 1
                 mem.io[0x208] = 1;
                 self.cpsr &= !FLAG_I; // Clear I flag (enable IRQs)
                 
-                let strict = self.r[0] != 0;
-                if strict {
-                    // Clear VBlank IF, then wait for next VBlank
-                    let if_val = mem.read_half(0x0400_0202);
-                    mem.write_half(0x0400_0202, if_val & !1);
-                } else {
-                    // Non-strict: if VBlank IF is already set, return immediately
-                    let if_val = mem.read_half(0x0400_0202);
-                    if if_val & 1 != 0 {
-                        // VBlank already happened, clear IF and return
-                        mem.write_half(0x0400_0202, if_val & !1);
-                        self.r[15] = self.r[15].wrapping_add(pc_inc);
-                        self.cycles += 1;
-                        return;
-                    }
-                }
+                // Always clear VBlank IF, then wait for next VBlank (strict mode)
+                let if_val = mem.read_half(0x0400_0202);
+                mem.write_half(0x0400_0202, if_val & !1);
+                
                 self.halted = true;
                 self.vblank_intr_wait = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
