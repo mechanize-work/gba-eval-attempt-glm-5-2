@@ -278,20 +278,19 @@ impl Emulator {
                 self.irq_processing = true;
                 self.cpu.raise_irq();
             }
-            
-            // Clear VBlank IF to prevent infinite loop
-            let if_val2 = (self.mem.io[0x202] as u16) | ((self.mem.io[0x203] as u16) << 8);
-            self.mem.io[0x202] = ((if_val2 & !1) & 0xFF) as u8;
-            self.mem.io[0x203] = (((if_val2 & !1) >> 8) & 0xFF) as u8;
-            self.irq.if_ = if_val2 & !1;
+            // Don't clear VBlank IF here - let the IRQ handler see it.
+            // The irq_processing cleanup will clear it after the handler returns.
         }
 
         if self.irq.pending() {
-            self.cpu.halted = false;
-            if !self.cpu.get_flag(FLAG_I) {
-                self.irq_pending_bits = self.irq.ie & self.irq.if_;
-                self.irq_processing = true;
-                self.cpu.raise_irq();
+            // Don't raise another IRQ while already processing one
+            if !self.irq_processing {
+                self.cpu.halted = false;
+                if !self.cpu.get_flag(FLAG_I) {
+                    self.irq_pending_bits = self.irq.ie & self.irq.if_;
+                    self.irq_processing = true;
+                    self.cpu.raise_irq();
+                }
             }
         } else if self.cpu.halted {
             if self.vblank_occurred {
