@@ -65,8 +65,9 @@ impl Cpu {
                 // Data processing - immediate (or MSR with immediate)
                 // MSR immediate: cond 001 1 0 r 10 1111 rotate imm8
                 // Check: bit 24=1, bit 23=0, bit 21=1, bit 20=0, bits 19:16=1111
-                if (instr & 0x019F_0000) == 0x012F_0000 {
-                    // MSR with immediate
+                // bit 22 (r) selects CPSR vs SPSR - don't include in mask
+                if (instr & 0x017F_0000) == 0x012F_0000 {
+                    // MSR with immediate (CPSR or SPSR)
                     self.exec_arm_psr_transfer(mem, instr);
                 } else {
                     self.exec_arm_data_processing(mem, instr, true);
