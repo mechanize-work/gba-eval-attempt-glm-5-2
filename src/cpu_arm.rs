@@ -1181,9 +1181,10 @@ impl Cpu {
             }
             0x05 => {
                 // VBlankIntrWait - wait for VBlank
-                // The BIOS sets IME=1 before waiting (verified from BIOS stub)
+                // The BIOS sets IME=1 and clears I flag before waiting
                 mem.write_byte(0x0400_0208, 1); // IME = 1
                 mem.io[0x208] = 1;
+                self.cpsr &= !FLAG_I; // Clear I flag (enable IRQs)
                 
                 let strict = self.r[0] != 0;
                 if strict {
