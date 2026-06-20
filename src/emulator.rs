@@ -567,10 +567,8 @@ impl Emulator {
             if self.current_scanline == VISIBLE_LINES as u16 {
                 dispstat |= 0x2; // Set VBlank bit
                 self.vblank_occurred = true;
-                // Only signal VBlank IRQ if not in VBlankIntrWait
-                if !self.cpu.vblank_intr_wait {
-                    self.irq.signal(IRQ_VBLANK);
-                }
+                // Always set VBlank IF bit (the IE/IME check handles IRQ delivery)
+                self.irq.signal(IRQ_VBLANK);
                 self.dma.trigger(1, &mut self.mem, &mut self.irq);
             } else if self.current_scanline > VISIBLE_LINES as u16 && self.current_scanline < TOTAL_LINES as u16 {
                 dispstat |= 0x2; // Still in VBlank
