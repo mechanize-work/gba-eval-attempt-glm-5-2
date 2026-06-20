@@ -1093,7 +1093,6 @@ impl Cpu {
             0x05 => {
                 // VBlankIntrWait - wait for NEXT VBlank
                 // Clear VBlank IF, halt CPU, wait for VBlank to wake
-                eprintln!("SWI VBlankIntrWait called from PC={:08X}", self.r[15]);
                 let if_val = mem.read_half(0x0400_0202);
                 mem.write_half(0x0400_0202, if_val & !1);
                 self.halted = true;
@@ -1178,7 +1177,8 @@ impl Cpu {
                 // Always 32-bit, copies in chunks of 8 words (32 bytes)
                 let src = self.r[0] & !3; // Word-align source
                 let dst = self.r[1] & !3; // Word-align dest
-                let mut count = self.r[2] & 0x0003_FFFF; // lower 22 bits
+                let total_count = self.r[2] & 0x0003_FFFF; // lower 22 bits
+                let mut count = total_count;
                 let mut s = src;
                 let mut d = dst;
 
@@ -1203,7 +1203,7 @@ impl Cpu {
                 self.r[1] = dst;
                 self.r[2] = 0;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
-                self.cycles += 5;
+                self.cycles += 5 + total_count as u64;
             }
             _ => {
                 // Unknown SWI - just advance PC
