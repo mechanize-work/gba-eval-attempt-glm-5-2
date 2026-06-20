@@ -389,7 +389,7 @@ impl Memory {
             }
             _ => {
                 let a = (off as usize) & (IO_SIZE - 1);
-                (self.io[a] as u16) | ((self.io[a + 1] as u16) << 8)
+                (self.io[a] as u16) | ((self.io[(a + 1) & (IO_SIZE - 1)] as u16) << 8)
             }
         }
     }
@@ -397,37 +397,37 @@ impl Memory {
     #[inline]
     fn io_read_half_internal(&self, off: u16) -> u16 {
         let a = (off as usize) & (IO_SIZE - 1);
-        (self.io[a] as u16) | ((self.io[a + 1] as u16) << 8)
+        (self.io[a] as u16) | ((self.io[(a + 1) & (IO_SIZE - 1)] as u16) << 8)
     }
 
     #[inline]
     fn io_write_half(&mut self, addr: u32, val: u16) {
         let a = ((addr - IO_BASE) as usize) & (IO_SIZE - 1);
         if a == 0x202 {
-            let current = (self.io[a] as u16) | ((self.io[a + 1] as u16) << 8);
+            let current = (self.io[a] as u16) | ((self.io[(a + 1) & (IO_SIZE - 1)] as u16) << 8);
             let new_val = current & !val;
             self.io[a] = (new_val & 0xFF) as u8;
-            self.io[a + 1] = ((new_val >> 8) & 0xFF) as u8;
+            self.io[(a + 1) & (IO_SIZE - 1)] = ((new_val >> 8) & 0xFF) as u8;
             return;
         }
         if a == 0x130 || a == 0x131 { return; }
         if a == 0x204 {
             // WAITCNT
             self.io[a] = (val & 0xFF) as u8;
-            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            self.io[(a + 1) & (IO_SIZE - 1)] = ((val >> 8) & 0xFF) as u8;
             self.waitcnt = val;
             return;
         }
         if a == 0x300 {
             self.io[a] = (val & 0xFF) as u8;
-            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            self.io[(a + 1) & (IO_SIZE - 1)] = ((val >> 8) & 0xFF) as u8;
             self.haltcnt = (val & 0xFF) as u8;
             return;
         }
         // DMA registers: cache CNT for emulator
         if a >= 0xB0 && a <= 0xDF {
             self.io[a] = (val & 0xFF) as u8;
-            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            self.io[(a + 1) & (IO_SIZE - 1)] = ((val >> 8) & 0xFF) as u8;
             for ch in 0..4 {
                 let cnt_off = 0xB8 + ch * 0x0C;
                 if a == cnt_off {
@@ -444,7 +444,7 @@ impl Memory {
         // Timer registers
         if a >= 0x100 && a <= 0x10F {
             self.io[a] = (val & 0xFF) as u8;
-            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            self.io[(a + 1) & (IO_SIZE - 1)] = ((val >> 8) & 0xFF) as u8;
             let tm = (a - 0x100) / 4;
             if a == 0x100 + tm * 4 { self.timer_data[tm] = val; }
             if a == 0x102 + tm * 4 { self.timer_cnt[tm] = val; }
@@ -453,14 +453,14 @@ impl Memory {
         // Sound registers
         if a >= 0x60 && a <= 0x8F {
             self.io[a] = (val & 0xFF) as u8;
-            self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+            self.io[(a + 1) & (IO_SIZE - 1)] = ((val >> 8) & 0xFF) as u8;
             let idx = (a - 0x60) / 2;
             if idx < 0x18 { self.apu_regs[idx] = val; }
             if a == 0x88 { self.soundbias = val; }
             return;
         }
         self.io[a] = (val & 0xFF) as u8;
-        self.io[a + 1] = ((val >> 8) & 0xFF) as u8;
+        self.io[(a + 1) & (IO_SIZE - 1)] = ((val >> 8) & 0xFF) as u8;
     }
 
     #[inline]
