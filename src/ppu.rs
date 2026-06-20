@@ -415,8 +415,11 @@ impl Ppu {
         let ref_y = (ref_y << 4) >> 4;
 
         // Internal reference point for this line
-        let mut x = ref_x;
-        let mut y = ref_y;
+        // Per-scanline: internal_ref = BG_ref + line * (PB, PD)
+        let line_offset_x = (pb as i64 * line as i64) as i32;
+        let line_offset_y = (pd as i64 * line as i64) as i32;
+        let mut x = ref_x.wrapping_add(line_offset_x);
+        let mut y = ref_y.wrapping_add(line_offset_y);
 
         let screen_base_addr = 0x0600_0000 + screen_base;
         let char_addr = 0x0600_0000 + char_base;
