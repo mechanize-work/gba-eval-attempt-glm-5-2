@@ -291,7 +291,6 @@ impl Emulator {
             self.mem.io[0x202] = ((if_val2 & !1) & 0xFF) as u8;
             self.mem.io[0x203] = (((if_val2 & !1) >> 8) & 0xFF) as u8;
             self.irq.if_ = if_val2 & !1;
-            return;
         }
 
         if self.irq.pending() {
