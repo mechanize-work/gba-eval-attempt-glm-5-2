@@ -14,22 +14,19 @@ fn main() {
     
     for frame in 0..10 {
         let emu = gba_emu::emulator::get_emu();
-        let cycle_before = emu.cycle_count;
+        let iwram: &[u8] = &emu.mem.iwram[..];
+        
+        // Check SoftReset flag before running frame
+        let flag = iwram[0x7FFA];
+        let pc = emu.cpu.r[15];
         
         gba_emu::emulator::run_frame();
         
         let emu = gba_emu::emulator::get_emu();
-        let io: &[u8] = &emu.mem.io[..];
-        let oam: &[u8] = &emu.mem.oam[..];
-        let mut oam_nz = 0;
-        for b in oam.iter() { if *b != 0 { oam_nz += 1; } }
+        let iwram: &[u8] = &emu.mem.iwram[..];
+        let flag_after = iwram[0x7FFA];
         
-        let vram: &[u8] = &emu.mem.vram[..];
-        let mut vram_nz = 0;
-        for b in vram.iter() { if *b != 0 { vram_nz += 1; } }
-        
-        eprintln!("Frame {}: PC=0x{:08X} cycles={} OAM_nz={} VRAM_nz={} IE=0x{:04X} IME=0x{:04X} DISPCNT=0x{:04X}",
-            frame, emu.cpu.r[15], emu.cycle_count - cycle_before,
-            oam_nz, vram_nz, rd16(io, 0x200), rd16(io, 0x208), rd16(io, 0));
+        eprintln!("Frame {}: PC=0x{:08X} -> 0x{:08X} SoftReset_flag: 0x{:02X} -> 0x{:02X} EWRAM[0]={:02X}",
+            frame, pc, emu.cpu.r[15], flag, flag_after, emu.mem.ewram[0]);
     }
 }
