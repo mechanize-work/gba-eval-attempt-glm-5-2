@@ -48,6 +48,12 @@ pub struct Emulator {
     pub vblank_occurred: bool,
     pub irq_processing: bool,
     pub irq_pending_bits: u16,
+    pub bad_pc_warned: bool,
+    pub frame_count: u32,
+    pub last_pc: u32,
+    pub last_instr: u32,
+    pub prev_pc: u32,
+    pub prev_instr: u32,
 }
 
 impl Emulator {
@@ -74,6 +80,12 @@ impl Emulator {
             vblank_occurred: false,
             irq_processing: false,
             irq_pending_bits: 0,
+            bad_pc_warned: false,
+            frame_count: 0,
+            last_pc: 0,
+            last_instr: 0,
+            prev_pc: 0,
+            prev_instr: 0,
         }
     }
 
@@ -210,6 +222,9 @@ impl Emulator {
     pub fn run_frame(&mut self) {
         let target_cycles = self.cycle_count.wrapping_add(CYCLES_PER_FRAME);
         let mut instr_count: u64 = 0;
+        let mut halt_count: u64 = 0;
+        let frame_num = self.frame_count;
+        let _ = frame_num;
 
         while self.cycle_count < target_cycles && instr_count < 2_000_000 {
             self.check_and_handle_interrupts();
@@ -218,6 +233,7 @@ impl Emulator {
                 self.cycle_count = self.cycle_count.wrapping_add(1);
                 self.advance_hardware(1);
                 instr_count += 1;
+                halt_count += 1;
             } else {
                 self.execute_one();
                 instr_count += 1;
@@ -228,7 +244,19 @@ impl Emulator {
         self.cycle_count = self.cycle_count.wrapping_sub(CYCLES_PER_FRAME);
 
         // Render the frame using current display state
+        // Debug: check palette and VRAM
+        let pal_nonzero = self.mem.palette.iter().any(|&b| b != 0);
+        let vram_nonzero = self.mem.vram.iter().any(|&b| b != 0);
+        let dispcnt = (self.mem.io[0x00] as u16) | ((self.mem.io[0x01] as u16) << 8);
+        let bg0cnt = (self.mem.io[0x08] as u16) | ((self.mem.io[0x09] as u16) << 8);
+        eprintln!("Frame done: dispcnt={:04X} bg0cnt={:04X} pal_nonzero={} vram_nonzero={} instrs={} halted={} pc={:08X} cpsr={:08X}", dispcnt, bg0cnt, pal_nonzero, vram_nonzero, instr_count, halt_count, self.cpu.r[15], self.cpu.cpsr);
+        if pal_nonzero {
+            let p0 = self.mem.read_half(0x05000000);
+            let p1 = self.mem.read_half(0x05000002);
+            eprintln!("  palette[0]={:04X} palette[1]={:04X}", p0, p1);
+        }
         self.ppu.render_frame(&self.mem);
+        self.frame_count += 1;
     }
 
     pub fn check_and_handle_interrupts(&mut self) {
@@ -338,6 +366,23 @@ impl Emulator {
         // Read instruction at PC
         let pc = self.cpu.r[15];
 
+        // Debug: catch when PC goes to bad area
+        if pc >= 0x0700_0000 && pc < 0x0800_0000 && !self.bad_pc_warned {
+            eprintln!("BAD PC: {:08X} cpsr={:08X} r14={:08X}", pc, self.cpu.cpsr, self.cpu.r[14]);
+            eprintln!("  prev: pc={:08X} instr={:08X}", self.prev_pc, self.prev_instr);
+            eprintln!("  last: pc={:08X} instr={:08X}", self.last_pc, self.last_instr);
+            // Check IRQ handler address
+            let irq_vec = self.mem.read_word(0x03FF_FFFC);
+            eprintln!("  IRQ vector at 0x03FFFFFC: 0x{:08X}", irq_vec);
+            // Check what's at the bad PC
+            let instr_at = self.mem.read_word(pc & !3);
+            eprintln!("  instr at bad PC: 0x{:08X}", instr_at);
+            for i in 0..16 {
+                eprintln!("  r{}={:08X}", i, self.cpu.r[i]);
+            }
+            self.bad_pc_warned = true;
+        }
+
         // Check if PC is in BIOS range and the instruction is 0 (empty BIOS)
         // This happens because our BIOS stub doesn't implement all functions
         if pc < 0x4000 {
@@ -368,9 +413,17 @@ impl Emulator {
 
         if self.cpu.is_thumb() {
             let instr = self.mem.read_half(pc);
+            self.prev_pc = self.last_pc;
+            self.prev_instr = self.last_instr;
+            self.last_pc = pc;
+            self.last_instr = instr as u32;
             self.cpu.execute_thumb(&mut self.mem, instr);
         } else {
             let instr = self.mem.read_word(pc);
+            self.prev_pc = self.last_pc;
+            self.prev_instr = self.last_instr;
+            self.last_pc = pc;
+            self.last_instr = instr;
             self.cpu.execute_arm(&mut self.mem, instr);
         }
 
