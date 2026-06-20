@@ -259,15 +259,24 @@ impl Emulator {
         eprintln!("Frame {}: dispcnt={:04X} pal={} vram={} instrs={} pc={:08X}",
             self.frame_count, dispcnt, pal_nonzero, vram_nonzero, instr_count, self.cpu.r[15]);
 
-        // Dump IRQ handler code on first stuck frame
-        if self.frame_count == 0 {
-            eprintln!("--- IWRAM dump (IRQ handler area) ---");
-            for i in 0..200 {
-                let addr = 0x03000890 + i * 4;
-                let v = self.mem.read_word(addr);
-                if v != 0 {
-                    eprintln!("  {:08X}: {:08X}", addr, v);
-                }
+        // Check IWRAM each frame
+        {
+            let v = self.mem.read_word(0x03000894);
+            if v != 0 || self.frame_count <= 5 {
+                eprintln!("  IWRAM[0x894] = {:08X}", v);
+            }
+        }
+        if self.frame_count == 4 {
+            eprintln!("--- IWRAM direct dump ---");
+            for i in 0..20 {
+                let addr = 0x03000894 + i * 4;
+                let off = (addr as usize) & 0x7FFF;
+                let b0 = self.mem.iwram[off];
+                let b1 = self.mem.iwram[off+1];
+                let b2 = self.mem.iwram[off+2];
+                let b3 = self.mem.iwram[off+3];
+                let v = (b0 as u32) | ((b1 as u32) << 8) | ((b2 as u32) << 16) | ((b3 as u32) << 24);
+                eprintln!("  {:08X}: {:08X} (bytes: {:02X} {:02X} {:02X} {:02X})", addr, v, b0, b1, b2, b3);
             }
         }
         self.ppu.render_frame(&self.mem);

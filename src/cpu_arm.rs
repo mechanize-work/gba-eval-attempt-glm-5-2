@@ -1093,6 +1093,7 @@ impl Cpu {
             0x05 => {
                 // VBlankIntrWait - wait for NEXT VBlank
                 // Clear VBlank IF, halt CPU, wait for VBlank to wake
+                eprintln!("SWI VBlankIntrWait called from PC={:08X}", self.r[15]);
                 let if_val = mem.read_half(0x0400_0202);
                 mem.write_half(0x0400_0202, if_val & !1);
                 self.halted = true;
