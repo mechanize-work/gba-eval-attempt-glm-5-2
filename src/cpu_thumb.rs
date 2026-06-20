@@ -54,12 +54,12 @@ impl Cpu {
                 // bits 15-13 = 011, bits 12-11 = opcode (0=STR, 1=LDR, 2=STRB, 3=LDRB)
                 self.exec_thumb_imm_offset(instr, mem);
             }
-            0x20..=0x21 => {
+            0x20..=0x23 => {
                 // THUMB.10: Load/store halfword with immediate offset
                 // bits 15-12 = 1000
                 self.exec_thumb_halfword_imm_offset(instr, mem);
             }
-            0x22..=0x23 | 0x26..=0x27 | 0x2A..=0x2B | 0x3A..=0x3B => {
+            0x26..=0x27 | 0x2A..=0x2B | 0x3A..=0x3B => {
                 // Undefined/reserved
                 self.r[15] = self.r[15].wrapping_add(2);
                 self.cycles += 1;

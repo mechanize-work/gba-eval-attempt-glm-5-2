@@ -402,6 +402,12 @@ impl Emulator {
         while self.cycle_in_scanline >= CYCLES_PER_SCANLINE {
             self.cycle_in_scanline -= CYCLES_PER_SCANLINE;
             self.current_scanline = (self.current_scanline + 1) % TOTAL_LINES as u16;
+            
+            // Snapshot display registers at start of visible period (scanline 0)
+            // This captures the display state the game set up during VBlank
+            if self.current_scanline == 0 {
+                self.snapshot_display_regs();
+            }
 
             // Update VCOUNT register
             self.mem.io[0x06] = (self.current_scanline & 0xFF) as u8;
