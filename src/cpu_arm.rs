@@ -917,7 +917,11 @@ impl Cpu {
                 }
             }
 
-            self.cycles += count as u64 + 2;
+            // Add wait states: first access is non-seq, rest are seq
+            let base_addr = addresses[reg_list.trailing_zeros() as usize];
+            let n_wait = Self::mem_wait_cfg(base_addr, mem.waitcnt, false);
+            let s_wait = Self::mem_wait_cfg(base_addr, mem.waitcnt, true);
+            self.cycles += count as u64 + 2 + n_wait + s_wait * (count as u64 - 1);
         } else {
             let mode = self.get_mode();
             let force_user = s_bit && mode != MODE_USR && mode != MODE_SYS;
@@ -935,7 +939,11 @@ impl Cpu {
                     mem.write_word(addresses[i], val);
                 }
             }
-            self.cycles += count as u64 + 1;
+            // Add wait states for STM
+            let base_addr = addresses[reg_list.trailing_zeros() as usize];
+            let n_wait = Self::mem_wait_cfg(base_addr, mem.waitcnt, false);
+            let s_wait = Self::mem_wait_cfg(base_addr, mem.waitcnt, true);
+            self.cycles += count as u64 + 1 + n_wait + s_wait * (count as u64 - 1);
         }
 
         // Write-back
