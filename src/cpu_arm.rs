@@ -1174,7 +1174,10 @@ impl Cpu {
             }
             0x04 => {
                 // IntrWait - wait for interrupt
-                // R0: 0=wait for any, 1=wait for specific (R1=IE, R2=IF)
+                // BIOS sets IME=1 and clears I flag (shared code with VBlankIntrWait)
+                mem.write_byte(0x0400_0208, 1);
+                mem.io[0x208] = 1;
+                self.cpsr &= !FLAG_I;
                 self.halted = true;
                 self.r[15] = self.r[15].wrapping_add(pc_inc);
                 self.cycles += 1;
