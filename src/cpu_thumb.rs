@@ -407,7 +407,8 @@ impl Cpu {
         match op {
             0x0 => { // ADD
                 let b = get_reg(self, rs);
-                let result = self.r[rd].wrapping_add(b);
+                let a = get_reg(self, rd);
+                let result = a.wrapping_add(b);
                 self.r[rd] = result;
                 if rd == 15 {
                     self.r[15] &= !1;
@@ -471,7 +472,7 @@ impl Cpu {
         let addr = self.r[rb].wrapping_add(self.r[ro]);
 
         match op {
-            0x0 => { mem.write_word(addr, self.r[rd]); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
+            0x0 => { mem.write_word(addr & !3, self.r[rd]); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
             0x1 => { mem.write_byte(addr, self.r[rd] as u8); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
             0x2 => { self.r[rd] = mem.read_word(addr & !3); self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
             0x3 => { self.r[rd] = mem.read_byte(addr) as u32; self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
@@ -553,8 +554,6 @@ impl Cpu {
             self.r[rd] = mem.read_half(addr) as u32;
             self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         } else {
-                    rd, rb, imm, addr, self.r[rd] as u16, rd, self.r[rd]);
-            }
             mem.write_half(addr, self.r[rd] as u16);
             self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         }
@@ -571,7 +570,7 @@ impl Cpu {
             self.r[rd] = mem.read_word(addr);
             self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         } else {
-            mem.write_word(addr, self.r[rd]);
+            mem.write_word(addr & !3, self.r[rd]);
             self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         }
         self.r[15] = self.r[15].wrapping_add(2);
