@@ -277,6 +277,9 @@ impl Emulator {
                     let advance = cycles_to_vblank.min(remaining).max(1);
                     self.cycle_count = self.cycle_count.wrapping_add(advance);
                     self.advance_hardware(advance);
+                    // After fast-forwarding, immediately check for VBlank wake
+                    // before the loop condition might exit
+                    self.check_and_handle_interrupts();
                 } else {
                     // Regular HALT: advance one scanline at a time to check for interrupts
                     let cycles_to_next_scanline = CYCLES_PER_SCANLINE - self.cycle_in_scanline;
