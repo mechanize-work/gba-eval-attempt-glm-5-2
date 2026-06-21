@@ -110,6 +110,8 @@ impl Dma {
 
     pub fn do_transfer(&mut self, i: usize, mem: &mut Memory, irq: &mut Interrupt) {
         let cnt = self.cnt[i];
+                i, self.cur_src[i], self.cur_dst[i], self.cur_count[i], cnt & 0x0400_0000 != 0);
+        }
         // CNT is stored as 32-bit: lower 16 = count, upper 16 = control (CNT_H)
         // CNT_H bit layout: [15]enable [14]irq [13:12]start [11]drq [10]32bit [9]repeat [8:7]SA [6:5]DA
         // In 32-bit: enable=bit31, irq=bit30, start=bits29:28, drq=bit27, 32bit=bit26, repeat=bit25, SA=bits24:23, DA=bits22:21

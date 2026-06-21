@@ -553,6 +553,8 @@ impl Cpu {
             self.r[rd] = mem.read_half(addr) as u32;
             self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         } else {
+                    rd, rb, imm, addr, self.r[rd] as u16, rd, self.r[rd]);
+            }
             mem.write_half(addr, self.r[rd] as u16);
             self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         }
