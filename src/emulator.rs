@@ -24,7 +24,7 @@ use crate::interrupt::{Interrupt, IRQ_VBLANK, IRQ_HBLANK, IRQ_VCOUNT};
 // GBA clock speed: 16.78 MHz
 const CPU_CLOCK: u32 = 16_777_216;
 // Cycles per frame: 280896 (4 scanline types)
-const CYCLES_PER_FRAME: u32 = 280_896;
+const CYCLES_PER_FRAME: u32 = 0;
 const CYCLES_PER_SCANLINE: u32 = 1232;
 const VISIBLE_LINES: u32 = 160;
 const TOTAL_LINES: u32 = 228;
@@ -192,17 +192,9 @@ impl Emulator {
             // Advance hardware
             let cycles = self.cpu.cycles as u32;
             self.cpu.cycles = 0;
-            self.cycle_count = self.cycle_count.wrapping_add(cycles);
             self.advance_hardware(cycles);
         }
-        
-        // Add BIOS timing delay to match real GBA BIOS (~768000 cycles).
-        // The real BIOS does memory clears and waits for display sync.
-        // Our BIOS stub executes too quickly, so we add the difference.
-        let bios_delay: u32 = 768_000 - self.cycle_count.min(768_000);
-        self.cycle_count = self.cycle_count.wrapping_add(bios_delay);
-        self.advance_hardware(bios_delay);
-        
+
         // Ensure post-boot state is correct
         // Copy BIOS interrupt vectors to IWRAM (real BIOS does this)
         for i in 0..0x40 {
