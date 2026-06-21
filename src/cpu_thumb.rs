@@ -643,6 +643,9 @@ impl Cpu {
             self.r[15] = val & !1;
             if val & 1 != 0 {
                 self.cpsr |= FLAG_T;
+            } else {
+                self.cpsr &= !FLAG_T;
+                self.r[15] &= !3;
             }
             addr = addr.wrapping_add(4);
         }
