@@ -131,9 +131,19 @@ impl Cpu {
                 self.cycles += 3;
             }
             0x3 => {
-                // MRS (actually handled in psr_transfer, but this is for some edge cases)
-                // Actually this shouldn't happen, MRS is 0x10F0
-                self.r[15] = self.r[15].wrapping_add(4);
+                // BLX Rm: Branch with Link and Exchange
+                // LR = PC + 4 (next instruction), PC = Rm (switch mode based on bit 0)
+                let rm = (instr & 0xF) as usize;
+                let addr = self.r[rm];
+                self.r[14] = self.r[15].wrapping_add(4); // LR = next instruction
+                if addr & 1 != 0 {
+                    self.cpsr |= FLAG_T;
+                    self.r[15] = addr & !1;
+                } else {
+                    self.cpsr &= !FLAG_T;
+                    self.r[15] = addr & !3;
+                }
+                self.cycles += 3;
             }
             0x5 => {
                 // QADD/QSUB etc (ARMv5TE)
