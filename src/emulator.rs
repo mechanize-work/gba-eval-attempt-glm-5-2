@@ -194,8 +194,8 @@ impl Emulator {
             self.cpu.cycles = 0;
             self.advance_hardware(cycles);
         }
-        
-        
+
+
         // Ensure post-boot state is correct
         // Copy BIOS interrupt vectors to IWRAM (real BIOS does this)
         for i in 0..0x40 {
