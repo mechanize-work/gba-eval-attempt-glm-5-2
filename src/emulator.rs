@@ -192,8 +192,16 @@ impl Emulator {
             // Advance hardware
             let cycles = self.cpu.cycles as u32;
             self.cpu.cycles = 0;
+            self.cycle_count = self.cycle_count.wrapping_add(cycles);
             self.advance_hardware(cycles);
         }
+        
+        // Add BIOS timing delay to match real GBA BIOS (~768000 cycles).
+        // The real BIOS does memory clears and waits for display sync.
+        // Our BIOS stub executes too quickly, so we add the difference.
+        let bios_delay: u32 = 768_000 - self.cycle_count.min(768_000);
+        self.cycle_count = self.cycle_count.wrapping_add(bios_delay);
+        self.advance_hardware(bios_delay);
         
         // Ensure post-boot state is correct
         // Copy BIOS interrupt vectors to IWRAM (real BIOS does this)
@@ -210,6 +218,9 @@ impl Emulator {
         
         // Set POSTFLG = 1
         self.mem.io[0x300] = 0x01;
+        
+        // Set DISPSTAT = 0x0008 (VBlank IRQ enable) - matches real BIOS
+        self.mem.io[0x04] = 0x08;
         
         // Clear IE, IF, IME if not already
         if self.irq.ie == 0 { self.mem.io[0x200] = 0; self.mem.io[0x201] = 0; }
