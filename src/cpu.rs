@@ -198,7 +198,7 @@ impl Cpu {
     #[inline]
     pub fn mem_wait_cfg(addr: u32, waitcnt: u16, is_sequential: bool) -> u64 {
         match addr >> 24 {
-            0x02 => if is_sequential { 0 } else { 1 }, // EWRAM: N=3,S=2 -> extra: N=2,S=1
+            0x02 => if is_sequential { 1 } else { 2 }, // EWRAM: N=3,S=2 -> extra: N=2,S=1
             0x08 | 0x09 => {
                 // ROM0: N = [4,3,2,8], S = [2,1] based on WAITCNT
                 let n_wait = [4u32, 3, 2, 8][((waitcnt >> 2) & 3) as usize];
