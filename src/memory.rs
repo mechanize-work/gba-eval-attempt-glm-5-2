@@ -475,12 +475,7 @@ impl Memory {
             self.io[a] &= !val;
             return;
         }
-        // HALTCNT byte write at 0x301
-        if a == 0x301 {
-            self.haltcnt = val;
-            self.io[a] = val;
-            return;
-        }
+        if a == 0x301 { self.haltcnt = val; self.io[a] = val; return; }
         self.io[a] = val;
     }
 

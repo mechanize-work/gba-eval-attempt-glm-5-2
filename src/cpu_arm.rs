@@ -903,29 +903,11 @@ impl Cpu {
                 if reg_list & (1 << i) != 0 {
                     let val = mem.read_word(addresses[i]);
                     if i == 15 {
-                        // For S-bit LDM with PC, restore CPSR from SPSR first,
-                        // then set PC alignment based on the restored THUMB bit.
-                        if s_bit && self.get_mode() != MODE_USR && self.get_mode() != MODE_SYS {
-                            let old_mode = self.get_mode();
-                            self.cpsr = self.get_spsr();
-                            let new_mode = self.get_mode();
-                            if new_mode != old_mode {
-                                self.switch_mode_from(old_mode, new_mode);
-                            }
-                            if self.is_thumb() {
-                                self.r[15] = val & !1;
-                            } else {
-                                self.r[15] = val & !3;
-                                self.cpsr &= !FLAG_T;
-                            }
+                        self.r[15] = val & !1;
+                        if val & 1 != 0 {
+                            self.cpsr |= FLAG_T;
                         } else {
-                            self.r[15] = val & !1;
-                            if val & 1 != 0 {
-                                self.cpsr |= FLAG_T;
-                            } else {
-                                self.cpsr &= !FLAG_T;
-                                self.r[15] &= !3;
-                            }
+                            self.r[15] &= !3;
                         }
                     } else if force_user {
                         // Load into user bank registers (simplified)
@@ -936,7 +918,17 @@ impl Cpu {
                 }
             }
 
-            // SPSR restore already handled above when loading PC
+            // S bit with PC load: CPSR = SPSR
+            if s_bit && (reg_list & 0x8000) != 0 {
+                let old_mode = self.get_mode();
+                if old_mode != MODE_USR && old_mode != MODE_SYS {
+                    self.cpsr = self.get_spsr();
+                    let new_mode = self.get_mode();
+                    if new_mode != old_mode {
+                        self.switch_mode_from(old_mode, new_mode);
+                    }
+                }
+            }
 
             // Add wait states: first access is non-seq, rest are seq
             let base_addr = addresses[reg_list.trailing_zeros() as usize];

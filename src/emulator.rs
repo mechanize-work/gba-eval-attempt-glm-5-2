@@ -24,7 +24,7 @@ use crate::interrupt::{Interrupt, IRQ_VBLANK, IRQ_HBLANK, IRQ_VCOUNT};
 // GBA clock speed: 16.78 MHz
 const CPU_CLOCK: u32 = 16_777_216;
 // Cycles per frame: 280896 (4 scanline types)
-const CYCLES_PER_FRAME: u32 = 0;
+const CYCLES_PER_FRAME: u32 = 280_896;
 const CYCLES_PER_SCANLINE: u32 = 1232;
 const VISIBLE_LINES: u32 = 160;
 const TOTAL_LINES: u32 = 228;
@@ -194,7 +194,7 @@ impl Emulator {
             self.cpu.cycles = 0;
             self.advance_hardware(cycles);
         }
-
+        
         // Ensure post-boot state is correct
         // Copy BIOS interrupt vectors to IWRAM (real BIOS does this)
         for i in 0..0x40 {
@@ -210,9 +210,6 @@ impl Emulator {
         
         // Set POSTFLG = 1
         self.mem.io[0x300] = 0x01;
-        
-        // Set DISPSTAT = 0x0008 (VBlank IRQ enable) - matches real BIOS
-        self.mem.io[0x04] = 0x08;
         
         // Clear IE, IF, IME if not already
         if self.irq.ie == 0 { self.mem.io[0x200] = 0; self.mem.io[0x201] = 0; }
@@ -280,9 +277,6 @@ impl Emulator {
                     let advance = cycles_to_vblank.min(remaining).max(1);
                     self.cycle_count = self.cycle_count.wrapping_add(advance);
                     self.advance_hardware(advance);
-                    // After fast-forwarding, immediately check for VBlank wake
-                    // before the loop condition might exit
-                    self.check_and_handle_interrupts();
                 } else {
                     // Regular HALT: advance one scanline at a time to check for interrupts
                     let cycles_to_next_scanline = CYCLES_PER_SCANLINE - self.cycle_in_scanline;

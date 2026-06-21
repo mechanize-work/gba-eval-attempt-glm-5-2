@@ -61,11 +61,9 @@ impl Cpu {
             }
             0x24..=0x27 => {
                 // THUMB.11: SP-relative load/store
-                // 0x24-0x25: STR Rd, [SP, #imm8*4] (bit 11=0)
-                // 0x26-0x27: LDR Rd, [SP, #imm8*4] (bit 11=1)
                 self.exec_thumb_sp_rel(instr, mem);
             }
-            0x3A..=0x3B => {
+            0x26..=0x27 | 0x3A..=0x3B => {
                 // Undefined/reserved
                 self.r[15] = self.r[15].wrapping_add(2);
                 self.cycles += 1;
@@ -407,8 +405,7 @@ impl Cpu {
         match op {
             0x0 => { // ADD
                 let b = get_reg(self, rs);
-                let a = get_reg(self, rd);
-                let result = a.wrapping_add(b);
+                let result = self.r[rd].wrapping_add(b);
                 self.r[rd] = result;
                 if rd == 15 {
                     self.r[15] &= !1;
@@ -472,7 +469,7 @@ impl Cpu {
         let addr = self.r[rb].wrapping_add(self.r[ro]);
 
         match op {
-            0x0 => { mem.write_word(addr & !3, self.r[rd]); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
+            0x0 => { mem.write_word(addr, self.r[rd]); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
             0x1 => { mem.write_byte(addr, self.r[rd] as u8); self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
             0x2 => { self.r[rd] = mem.read_word(addr & !3); self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
             0x3 => { self.r[rd] = mem.read_byte(addr) as u32; self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false); }
@@ -570,24 +567,23 @@ impl Cpu {
             self.r[rd] = mem.read_word(addr);
             self.cycles += 3 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         } else {
-            mem.write_word(addr & !3, self.r[rd]);
+            mem.write_word(addr, self.r[rd]);
             self.cycles += 2 + Self::mem_wait_cfg(addr, mem.waitcnt, false);
         }
         self.r[15] = self.r[15].wrapping_add(2);
     }
 
     fn exec_thumb_load_address(&mut self, instr: u16) {
-        // GBATEK: bit 11 = 0 -> ADD Rd, PC, #imm8*4
-        //         bit 11 = 1 -> ADD Rd, SP, #imm8*4
-        let is_sp = (instr >> 11) & 1 != 0;
+        // Bit 11: 0 = SP-relative, 1 = PC-relative
+        let is_pc = (instr >> 11) & 1 != 0;
         let rd = ((instr >> 8) & 0x7) as usize;
         let imm = ((instr & 0xFF) as u32) << 2;
 
-        if is_sp {
-            self.r[rd] = self.r[13].wrapping_add(imm);
-        } else {
+        if is_pc {
             // PC is current instruction + 4, word-aligned
             self.r[rd] = ((self.r[15].wrapping_add(4)) & !3).wrapping_add(imm);
+        } else {
+            self.r[rd] = self.r[13].wrapping_add(imm);
         }
         self.r[15] = self.r[15].wrapping_add(2);
         self.cycles += 1;
@@ -643,9 +639,6 @@ impl Cpu {
             self.r[15] = val & !1;
             if val & 1 != 0 {
                 self.cpsr |= FLAG_T;
-            } else {
-                self.cpsr &= !FLAG_T;
-                self.r[15] &= !3;
             }
             addr = addr.wrapping_add(4);
         }
